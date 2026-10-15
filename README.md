@@ -1,9 +1,4 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="../desain-logo/logo/lendora-lockup-inverse.svg">
-    <img alt="Lendora" src="../desain-logo/logo/lendora-lockup.svg" width="270">
-  </picture>
-</p>
+
 
 <h1 align="center">Lendora V2</h1>
 
