@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="desain-logo/logo/lendora-lockup-inverse.svg">
-    <img alt="Lendora" src="desain-logo/logo/lendora-lockup.svg" width="270">
+    <source media="(prefers-color-scheme: dark)" srcset="../desain-logo/logo/lendora-lockup-inverse.svg">
+    <img alt="Lendora" src="../desain-logo/logo/lendora-lockup.svg" width="270">
   </picture>
 </p>
 
@@ -462,17 +462,17 @@ Issue severity uses a rank (`active` < `awaiting_inspection` < `under_maintenanc
 ### Brand assets used in this repository
 
 <p align="center">
-  <img alt="Lendora mark, light background" src="desain-logo/logo/lendora-mark.svg" width="72">
-  <img alt="Lendora mark, dark background" src="desain-logo/logo/icon-dark.svg" width="72">
-  <img alt="Lendora favicon" src="desain-logo/logo/lendora-favicon.svg" width="72">
+  <img alt="Lendora mark, light background" src="../desain-logo/logo/lendora-mark.svg" width="72">
+  <img alt="Lendora mark, dark background" src="../desain-logo/logo/icon-dark.svg" width="72">
+  <img alt="Lendora favicon" src="../desain-logo/logo/lendora-favicon.svg" width="72">
 </p>
 
 | Asset | Purpose |
 | --- | --- |
-| [`desain-logo/logo/lendora-lockup.svg`](desain-logo/logo/lendora-lockup.svg) | Symbol + wordmark, for light backgrounds (this README's header) |
-| [`desain-logo/logo/lendora-lockup-inverse.svg`](desain-logo/logo/lendora-lockup-inverse.svg) | Symbol + wordmark, white, for dark backgrounds |
-| [`desain-logo/logo/lendora-lockup-inverse-balanced.svg`](desain-logo/logo/lendora-lockup-inverse-balanced.svg) | Wordmark tilted 4° for optical alignment on dark backgrounds |
-| [`desain-logo/logo/lendora-mark.svg`](desain-logo/logo/lendora-mark.svg) | Symbol only, for space narrower than 120px |
+| [`../desain-logo/logo/lendora-lockup.svg`](../desain-logo/logo/lendora-lockup.svg) | Symbol + wordmark, for light backgrounds (this README's header) |
+| [`../desain-logo/logo/lendora-lockup-inverse.svg`](../desain-logo/logo/lendora-lockup-inverse.svg) | Symbol + wordmark, white, for dark backgrounds |
+| [`../desain-logo/logo/lendora-lockup-inverse-balanced.svg`](../desain-logo/logo/lendora-lockup-inverse-balanced.svg) | Wordmark tilted 4° for optical alignment on dark backgrounds |
+| [`../desain-logo/logo/lendora-mark.svg`](../desain-logo/logo/lendora-mark.svg) | Symbol only, for space narrower than 120px |
 | [`desain-logo/logo/lendora-mark-inverse.svg`](desain-logo/logo/lendora-mark-inverse.svg) | Symbol only, white |
 | [`desain-logo/logo/lendora-favicon.svg`](desain-logo/logo/lendora-favicon.svg) | 32×32 favicon with heavier stroke |
 | [`desain-logo/logo/icon-light.svg`](desain-logo/logo/icon-light.svg) | App icon, white plate |
