@@ -1,0 +1,65 @@
+/*
+ * Token visual Lendora. Nilai disalin dari brand kit The Handoff
+ * (desain-logo/color-pallet/tokens.css), disetujui pemilik sebagai arah
+ * visual Fase 10. Radius 0 adalah identitas, bukan kelalaian.
+ */
+
+:root {
+  color-scheme: light;
+  --ln-bg: #ffffff;
+  --ln-surface: #ffffff;
+  --ln-surface-alt: #f5f5f3;
+  --ln-border: #e4e4e1;
+  --ln-border-strong: #0a0a0a;
+  --ln-text: #0a0a0a;
+  --ln-text-2: #525252;
+  --ln-inverse-bg: #0a0a0a;
+  --ln-inverse-fg: #ffffff;
+  --ln-ok: #15803d;
+  --ln-ok-bg: #e9f6ee;
+  --ln-warn: #b45309;
+  --ln-warn-bg: #fbf1e4;
+  --ln-err: #dc2626;
+  --ln-err-bg: #fdecec;
+  --ln-info: #2563eb;
+  --ln-info-bg: #eaf1fe;
+  --ln-n400: #b0b0ae;
+  --ln-n600: #6b6b6b;
+  --ln-radius: 0px;
+  --ln-motion-fast: 120ms;
+  --ln-motion-base: 180ms;
+  --ln-motion-slow: 280ms;
+  --ln-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Skala tata letak editorial (diambil dari bahasa landing page). */
+  --ln-gutter: clamp(22px, 5vw, 72px);
+  --ln-section-y: clamp(40px, 6vw, 88px);
+  --ln-display: clamp(34px, 4.6vw, 62px);
+  --ln-display-sm: clamp(26px, 3vw, 40px);
+  --ln-title: clamp(19px, 1.6vw, 24px);
+  --ln-micro: 9px;
+  --ln-font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --ln-font-body: 'Inter', system-ui, sans-serif;
+  --ln-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --ln-bg: #0a0a0a;
+  --ln-surface: #0a0a0a;
+  --ln-surface-alt: #161616;
+  --ln-border: #262626;
+  --ln-border-strong: #fafafa;
+  --ln-text: #fafafa;
+  --ln-text-2: #a3a3a3;
+  --ln-inverse-bg: #ffffff;
+  --ln-inverse-fg: #0a0a0a;
+  --ln-ok: #4ade80;
+  --ln-ok-bg: #10291a;
+  --ln-warn: #fbbf24;
+  --ln-warn-bg: #2a2008;
+  --ln-err: #f87171;
+  --ln-err-bg: #2e1414;
+  --ln-info: #60a5fa;
+  --ln-info-bg: #101e36;
+}

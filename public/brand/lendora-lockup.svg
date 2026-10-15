@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 32" width="200" height="32" role="img" aria-label="Lendora">
+<g fill="none" stroke="#0A0A0A" stroke-width="3" stroke-linecap="round"><path d="M5.66 12.24A11 11 0 0 1 26.34 12.24"/><path d="M26.34 19.76A11 11 0 0 1 5.66 19.76"/></g>
+<circle cx="27" cy="16" r="2.6" fill="#0A0A0A"/>
+<text x="40" y="23" font-family="Space Grotesk, Arial, sans-serif" font-weight="700" font-size="20" letter-spacing="-0.5" fill="#0A0A0A">Lendora</text>
+</svg>
