@@ -129,7 +129,8 @@ class WalletTest extends TestCase
             ->postJson('/api/wallet/topups/sync')
             ->assertOk()
             ->assertJsonPath('data.checked', 1)
-            ->assertJsonPath('data.settled', ['WLLET-sync-settlement']);
+            ->assertJsonPath('data.settled', ['WLLET-sync-settlement'])
+            ->assertJsonPath('data.settled_amount', 50000);
 
         $this->assertSame(
             WalletTransaction::STATUS_SUCCESS,

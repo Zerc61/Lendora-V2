@@ -173,6 +173,7 @@ class WalletController extends Controller
             ->get();
 
         $settled = [];
+        $settledAmount = 0.0;
 
         foreach ($pending as $transaction) {
             try {
@@ -190,6 +191,7 @@ class WalletController extends Controller
 
             if ($updated->status === WalletTransaction::STATUS_SUCCESS) {
                 $settled[] = $updated->reference_id;
+                $settledAmount += (float) $updated->amount;
             }
         }
 
@@ -197,6 +199,8 @@ class WalletController extends Controller
             'data' => [
                 'checked' => $pending->count(),
                 'settled' => $settled,
+                // Dihitung server supaya klien tidak menebak nominal yang lunas.
+                'settled_amount' => $settledAmount,
                 'wallet_balance' => (float) $user->fresh()->wallet_balance,
             ],
         ]);

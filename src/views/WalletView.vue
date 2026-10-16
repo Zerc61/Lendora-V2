@@ -9,7 +9,8 @@
  * Midtrans tidak bisa menjangkau server (mis. dev lokal tanpa tunnel) — tanpa
  * perlu mengatur URL notifikasi di dashboard Midtrans.
  */
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { apiGet, apiPost, ApiError } from '../lib/http'
 import { fmtDateTime, fmtPrice, WALLET_TONES } from '../lib/format'
 import {
@@ -28,10 +29,30 @@ import ErrorState from '../components/ErrorState.vue'
 import Pagination from '../components/Pagination.vue'
 
 /*
- * Batas nominal datang dari server (`/wallet/balance`); nilai di lib/wallet.js
- * hanya cadangan sampai jawaban pertama tiba.
+ * Pilihan nominal cepat. Batas nominal tetap dari server (`/wallet/balance`),
+ * jadi daftar ini hanya jalan pintas — semuanya masih di dalam batas.
  */
-const PRESETS = [10000, 50000, 100000, 250000]
+const PRESETS = [
+  10000, 20000, 25000, 50000, 75000, 100000, 150000, 200000, 250000, 300000, 400000, 500000, 600000,
+  750000, 900000, 1000000,
+]
+
+/*
+ * Selang pemeriksaan status saat menunggu pembayaran, dan batas jumlah
+ * percobaan sebelum menyerahkan ke tombol "Cek status".
+ */
+const POLL_INTERVAL = 3000
+const POLL_LIMIT = 40
+
+const route = useRoute()
+const router = useRouter()
+
+/*
+ * Midtrans mengembalikan pengguna ke halaman ini dengan `order_id` di query,
+ * jadi pengguna yang baru membayar lewat jalur redirect bisa langsung masuk ke
+ * tahap menunggu tanpa menekan apa pun.
+ */
+const returnOrderId = typeof route.query.order_id === 'string' ? route.query.order_id : null
 
 const page = ref(null)
 const motion = usePageMotion(page)
@@ -49,11 +70,12 @@ const topupError = ref(null)
 const settleNotice = ref(null)
 const limits = ref(topUpLimits(null))
 
-function wait(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
-}
+// Tahap alur top up: `form` (nominal) -> `waiting` (menunggu pembayaran) ->
+// `success` (pembayaran diterima).
+const stage = ref('form')
+const paidTotal = ref(0)
+const pollTimedOut = ref(false)
+let pollTimer = null
 
 async function loadBalance() {
   try {
@@ -95,9 +117,9 @@ async function refresh() {
 }
 
 /*
- * Tanya server status top up yang masih menunggu (server lalu menanyakan ke
- * Midtrans). Balikannya `true` bila ada baris yang baru lunas, supaya pemanggil
- * memuat ulang saldo.
+ * Tanya server status top up yang masih menunggu. Server yang menanyakan ke
+ * Midtrans; klien tidak pernah menambah saldo sendiri. Balikannya jumlah dan
+ * total nominal yang baru lunas.
  */
 async function syncPendingTopUps() {
   const waiting = transactions.value.some(
@@ -105,50 +127,99 @@ async function syncPendingTopUps() {
   )
 
   if (!waiting) {
-    return false
+    return { count: 0, amount: 0 }
   }
 
   try {
     const payload = await apiPost('/wallet/topups/sync', {})
     const settled = payload?.data?.settled ?? []
 
-    if (!settled.length) {
-      return false
-    }
-
-    const total = transactions.value
-      .filter((transaction) => settled.includes(transaction.reference_id))
-      .reduce((sum, transaction) => sum + Number(transaction.amount), 0)
-
-    settleNotice.value =
-      total > 0
-        ? `Pembayaran diterima: ${fmtPrice(total)} ditambahkan ke saldo.`
-        : 'Pembayaran diterima dan saldo diperbarui.'
-
-    return true
+    return { count: settled.length, amount: Number(payload?.data?.settled_amount ?? 0) }
   } catch {
-    // Gagal bertanya ke Midtrans bukan kegagalan halaman: tombol muat ulang
+    // Gagal bertanya ke Midtrans bukan kegagalan halaman: tombol "Cek status"
     // tetap ada, dan rekonsiliasi terjadwal menyusul.
-    return false
+    return { count: 0, amount: 0 }
+  }
+}
+
+function stopPolling() {
+  if (pollTimer !== null) {
+    clearTimeout(pollTimer)
+    pollTimer = null
   }
 }
 
 /*
- * Setelah pembayaran, Midtrans butuh beberapa detik untuk mencatat hasilnya,
- * jadi statusnya dicek beberapa kali. Berhenti begitu saldo bertambah.
+ * Tahap menunggu: status dicek berkala sampai Midtrans melaporkan pembayaran,
+ * lalu halaman pindah ke tahap berhasil. Batas percobaan menjaga halaman tidak
+ * menanyakan selamanya; setelah itu pengguna memakai tombol "Cek status".
  */
-async function settlePendingTopUps(attempts = 3) {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await syncPendingTopUps()) {
-      break
-    }
+function startPolling(attempt = 0) {
+  stopPolling()
+  pollTimedOut.value = false
 
-    if (attempt < attempts - 1) {
-      await wait(1500)
-    }
+  pollTimer = setTimeout(
+    async () => {
+      pollTimer = null
+
+      const { count, amount } = await syncPendingTopUps()
+
+      if (count > 0) {
+        await markPaid(amount)
+        return
+      }
+
+      if (attempt + 1 >= POLL_LIMIT) {
+        pollTimedOut.value = true
+        return
+      }
+
+      startPolling(attempt + 1)
+    },
+    attempt === 0 ? 0 : POLL_INTERVAL,
+  )
+}
+
+async function markPaid(amount) {
+  stopPolling()
+  paidTotal.value = amount
+  await refresh()
+  stage.value = 'success'
+
+  // Query `order_id` dibersihkan supaya muat ulang halaman tidak memulai
+  // penantian untuk pembayaran yang sudah selesai.
+  if (returnOrderId && route.query.order_id) {
+    await router.replace({ query: {} })
+  }
+}
+
+/*
+ * Tombol "Cek status": sekali tanya sekarang, lalu lanjut menunggu berkala.
+ */
+async function checkStatusNow() {
+  topupBusy.value = true
+  const { count, amount } = await syncPendingTopUps()
+  topupBusy.value = false
+
+  if (count > 0) {
+    await markPaid(amount)
+    return
   }
 
-  await refresh()
+  startPolling(1)
+}
+
+function resetTopup() {
+  stopPolling()
+  stage.value = 'form'
+  topupAmount.value = 50000
+  paidTotal.value = 0
+  topupError.value = null
+  pollTimedOut.value = false
+}
+
+function gotoHistory() {
+  document.querySelector('.wallet__history')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 async function topup() {
@@ -167,27 +238,34 @@ async function topup() {
     const payload = await apiPost('/wallet/topup', { amount: topupAmount.value })
     const data = payload?.data ?? {}
 
-    // Snap di halaman ini; kalau skripnya tidak bisa dimuat, lanjut ke halaman
-    // pembayaran Midtrans. Begitu hasilnya dilaporkan, server menanyakan status
-    // ke Midtrans supaya saldo masuk tanpa menunggu notifikasi.
+    if (!data.snap_token && !data.redirect_url) {
+      topupError.value = 'Tautan pembayaran tidak tersedia. Coba lagi.'
+      return
+    }
+
+    // Masuk tahap menunggu sebelum halaman pembayaran terbuka: Snap membuka
+    // jendelanya di atas halaman ini, dan status dicek berkala begitu hasilnya
+    // dilaporkan.
+    stage.value = 'waiting'
+    startPolling()
+
     const opened = await payWithSnap({
       token: data.snap_token,
       clientKey: data.snap_client_key,
       isProduction: data.snap_is_production === true,
-      onSettled: settlePendingTopUps,
+      onSettled: () => startPolling(),
     })
 
     if (opened) {
       return
     }
 
-    if (!data.redirect_url) {
-      topupError.value = 'Tautan pembayaran tidak tersedia. Coba lagi.'
-      return
-    }
-
+    // Snap tidak bisa dimuat: pembayaran lanjut di halaman Midtrans, dan
+    // pengguna kembali ke sini dengan `order_id` di query.
     window.location.assign(data.redirect_url)
   } catch (e) {
+    stage.value = 'form'
+    stopPolling()
     topupError.value = e instanceof ApiError ? e.message : 'Gagal memulai pembayaran.'
   } finally {
     topupBusy.value = false
@@ -197,10 +275,29 @@ async function topup() {
 onMounted(async () => {
   await refresh()
 
-  // Pengguna yang kembali dari halaman pembayaran Midtrans mendarat di sini:
-  // status pending dicek sendiri supaya saldo langsung bertambah.
-  await settlePendingTopUps(2)
+  // Kembali dari halaman pembayaran Midtrans: langsung tunggu pembayarannya.
+  if (
+    returnOrderId &&
+    transactions.value.some(
+      (transaction) =>
+        transaction.reference_id === returnOrderId && transaction.status === 'pending',
+    )
+  ) {
+    stage.value = 'waiting'
+    startPolling()
+    return
+  }
+
+  // Dibuka biasa: kalau ada top up yang menunggu, tanya sekali ke Midtrans.
+  const { count, amount } = await syncPendingTopUps()
+
+  if (count > 0) {
+    settleNotice.value = `Pembayaran diterima: ${fmtPrice(amount)} ditambahkan ke saldo.`
+    await refresh()
+  }
 })
+
+onUnmounted(stopPolling)
 </script>
 
 <template>
@@ -226,52 +323,116 @@ onMounted(async () => {
         <p v-if="balanceError" class="field-error" role="alert">{{ balanceError }}</p>
       </div>
 
-      <form class="panel wallet__card" @submit.prevent="topup">
-        <p class="index-label">ISI SALDO</p>
+      <div class="panel wallet__card">
+        <!-- Tahap 1 — nominal -->
+        <template v-if="stage === 'form'">
+          <p class="index-label">ISI SALDO</p>
 
-        <div class="field">
-          <label for="wallet-amount">Nominal</label>
-          <input
-            id="wallet-amount"
-            v-model.number="topupAmount"
-            class="input num"
-            type="number"
-            inputmode="numeric"
-            :min="limits.min"
-            :max="limits.max"
-            step="1000"
-            required
-          />
-          <p class="hint">
-            Minimal {{ fmtPrice(limits.min) }}, maksimal {{ fmtPrice(limits.max) }} per transaksi.
+          <form class="wallet__form" @submit.prevent="topup">
+            <div class="field">
+              <label for="wallet-amount">Nominal</label>
+              <input
+                id="wallet-amount"
+                v-model.number="topupAmount"
+                class="input num"
+                type="number"
+                inputmode="numeric"
+                :min="limits.min"
+                :max="limits.max"
+                step="1000"
+                required
+              />
+              <p class="hint">
+                Minimal {{ fmtPrice(limits.min) }}, maksimal {{ fmtPrice(limits.max) }} per
+                transaksi.
+              </p>
+            </div>
+
+            <ul class="wallet__presets">
+              <li v-for="preset in PRESETS" :key="preset">
+                <button
+                  type="button"
+                  class="wallet__preset num"
+                  :class="{ 'wallet__preset--on': topupAmount === preset }"
+                  :aria-pressed="topupAmount === preset"
+                  @click="topupAmount = preset"
+                >
+                  {{ fmtPrice(preset) }}
+                </button>
+              </li>
+            </ul>
+
+            <p v-if="topupError" class="form-error" role="alert">{{ topupError }}</p>
+
+            <button type="submit" class="btn btn--primary" :disabled="topupBusy">
+              {{ topupBusy ? 'Menyiapkan pembayaran…' : 'Lanjut ke pembayaran' }}
+            </button>
+
+            <p class="wallet__note">
+              Pembayaran diproses Midtrans. Saldo bertambah setelah Midtrans mengonfirmasi ke server
+              — halaman ini yang menanyakannya, jadi tidak ada notifikasi yang perlu diatur.
+            </p>
+          </form>
+        </template>
+
+        <!-- Tahap 2 — menunggu pembayaran -->
+        <template v-else-if="stage === 'waiting'">
+          <p class="index-label">MENUNGGU PEMBAYARAN</p>
+
+          <p class="wallet__waiting-amount num">{{ fmtPrice(topupAmount) }}</p>
+
+          <p class="wallet__note" role="status" aria-live="polite">
+            <template v-if="pollTimedOut">
+              Belum ada konfirmasi dari Midtrans. Kalau kamu sudah membayar, tekan Cek status.
+            </template>
+            <template v-else>
+              Selesaikan pembayaran di jendela Midtrans. Halaman ini menunggu konfirmasi…
+            </template>
           </p>
-        </div>
 
-        <ul class="wallet__presets">
-          <li v-for="preset in PRESETS" :key="preset">
+          <div class="wallet__waiting-actions">
             <button
               type="button"
-              class="wallet__preset num"
-              :class="{ 'wallet__preset--on': topupAmount === preset }"
-              :aria-pressed="topupAmount === preset"
-              @click="topupAmount = preset"
+              class="btn btn--ghost wallet__check"
+              :disabled="topupBusy"
+              @click="checkStatusNow"
             >
-              {{ fmtPrice(preset) }}
+              {{ topupBusy ? 'Memeriksa…' : 'Cek status' }}
             </button>
-          </li>
-        </ul>
+            <button type="button" class="wallet__little" @click="resetTopup">Ganti nominal</button>
+          </div>
 
-        <p v-if="topupError" class="form-error" role="alert">{{ topupError }}</p>
+          <p class="wallet__note wallet__note--tiny">
+            Status dicek otomatis tiap beberapa detik. Saldo tidak pernah ditambah dari browser —
+            server yang memastikan pembayarannya ke Midtrans.
+          </p>
+        </template>
 
-        <button type="submit" class="btn btn--primary" :disabled="topupBusy">
-          {{ topupBusy ? 'Menyiapkan pembayaran…' : 'Lanjut ke pembayaran' }}
-        </button>
+        <!-- Tahap 3 — berhasil -->
+        <template v-else>
+          <div class="wallet__paid">
+            <svg
+              class="wallet__check-mark"
+              viewBox="0 0 72 72"
+              role="img"
+              aria-label="Pembayaran berhasil"
+            >
+              <circle class="wallet__check-ring" cx="36" cy="36" r="32" />
+              <path class="wallet__check-tick" d="M22 37.5 L32 47 L50 27" />
+            </svg>
 
-        <p class="wallet__note">
-          Pembayaran diproses Midtrans. Halaman ini mengecek sendiri status pembayaranmu ke Midtrans
-          setiap kali dibuka, jadi saldo bisa langsung bertambah setelah pembayaran selesai.
-        </p>
-      </form>
+            <p class="wallet__paid-title" role="status" aria-live="polite">Pembayaran berhasil</p>
+            <p class="wallet__paid-amount num">+{{ fmtPrice(paidTotal) }}</p>
+            <p class="wallet__paid-balance">
+              Saldo sekarang
+              <span class="num">{{ balance === null ? '—' : fmtPrice(balance) }}</span>
+            </p>
+          </div>
+
+          <button type="button" class="btn btn--primary" @click="resetTopup">Isi saldo lagi</button>
+          <button type="button" class="btn btn--ghost" @click="gotoHistory">Lihat riwayat</button>
+        </template>
+      </div>
     </div>
 
     <section class="wallet__history">
@@ -345,7 +506,8 @@ onMounted(async () => {
 
 .wallet__grid {
   display: grid;
-  gap: 1rem;}
+  gap: 1rem;
+}
 
 .wallet__card {
   display: grid;
@@ -371,9 +533,126 @@ onMounted(async () => {
   line-height: 1.65;
 }
 
-.wallet__presets {
+.wallet__note--tiny {
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.wallet__waiting-amount {
+  margin: 0;
+  font-size: var(--ln-display-sm);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+.wallet__waiting-actions {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/*
+ * "Cek status" sengaja kecil: aksi sekunder, bukan tombol utama tahap ini.
+ */
+.wallet__check {
+  min-height: 40px;
+  padding-inline: 0.9rem;
+  font-size: 0.8125rem;
+}
+
+.wallet__little {
+  min-height: 40px;
+  padding: 0 0.25rem;
+  border: 0;
+  background: none;
+  color: var(--ln-text-2);
+  font: inherit;
+  font-size: 0.75rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.wallet__little:hover {
+  color: var(--ln-text);
+}
+
+.wallet__paid {
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  padding: 0.75rem 0 0.25rem;
+  text-align: center;
+}
+
+.wallet__check-mark {
+  width: 72px;
+  height: 72px;
+  overflow: visible;
+}
+
+.wallet__check-ring {
+  fill: var(--ln-ok-bg);
+  stroke: var(--ln-ok);
+  stroke-width: 3;
+  stroke-dasharray: 202;
+  stroke-dashoffset: 202;
+  animation: wallet-draw 520ms var(--ln-ease) forwards;
+}
+
+.wallet__check-tick {
+  fill: none;
+  stroke: var(--ln-ok);
+  stroke-width: 5;
+  stroke-linecap: square;
+  stroke-dasharray: 44;
+  stroke-dashoffset: 44;
+  animation: wallet-draw 300ms 380ms var(--ln-ease) forwards;
+}
+
+.wallet__paid-title {
+  margin: 0.35rem 0 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.wallet__paid-amount {
+  margin: 0;
+  color: var(--ln-ok);
+  font-size: var(--ln-display-sm);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+.wallet__paid-balance {
+  margin: 0;
+  color: var(--ln-text-2);
+  font-size: 0.8125rem;
+}
+
+@keyframes wallet-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Tanpa animasi: tanda centang langsung tampil penuh. */
+@media (prefers-reduced-motion: reduce) {
+  .wallet__check-ring,
+  .wallet__check-tick {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
+
+.wallet__form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.wallet__presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
   gap: 0.5rem;
   margin: 0;
   padding: 0;
@@ -381,8 +660,9 @@ onMounted(async () => {
 }
 
 .wallet__preset {
-  min-height: 36px;
-  padding: 0.25rem 0.75rem;
+  width: 100%;
+  min-height: 40px;
+  padding: 0.25rem 0.5rem;
   border: 1px solid var(--ln-border);
   background: var(--ln-surface);
   color: var(--ln-text-2);

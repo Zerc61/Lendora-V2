@@ -60,5 +60,15 @@ class AppServiceProvider extends ServiceProvider
                     'message' => 'Terlalu banyak percobaan pembayaran. Coba lagi beberapa saat lagi.',
                 ], 429));
         });
+
+        // Pemeriksaan status pembayaran aman diulang: batasnya lebih longgar
+        // karena halaman dompet menanyakannya berkala selama menunggu bayar.
+        RateLimiter::for('payment-status', function (Request $request) {
+            return Limit::perMinute(60)
+                ->by($request->user()?->getKey() ?? $request->ip())
+                ->response(fn () => response()->json([
+                    'message' => 'Terlalu sering memeriksa status. Tunggu sebentar.',
+                ], 429));
+        });
     }
 }
