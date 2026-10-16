@@ -292,6 +292,86 @@ class MembershipAuthorizationTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_unaffiliated_accounts_are_listed_as_candidates_for_admin(): void
+    {
+        [$admin] = $this->memberWithRole(Membership::ROLE_ADMIN);
+        $newcomer = User::factory()->pending()->create([
+            'name' => 'Sampbernad',
+            'email' => 'sampbernad@gmail.com',
+        ]);
+
+        $payload = $this->actingAs($admin)->getJson('/api/memberships')->assertOk()->json();
+
+        $this->assertSame(['sampbernad@gmail.com'], array_column($payload['candidates'], 'email'));
+        $this->assertSame($newcomer->getKey(), $payload['candidates'][0]['id']);
+        $this->assertSame(User::STATUS_PENDING, $payload['candidates'][0]['status']);
+        $this->assertSame('Menunggu aktivasi', $payload['candidates'][0]['status_label']);
+    }
+
+    public function test_candidates_exclude_accounts_that_already_have_a_membership(): void
+    {
+        [$admin] = $this->memberWithRole(Membership::ROLE_ADMIN);
+        $pending = User::factory()->pending()->create(['email' => 'pendaftar@example.org']);
+        Membership::factory()->invited()->create([
+            'organization_id' => $this->organization->getKey(),
+            'user_id' => $pending->getKey(),
+        ]);
+
+        $payload = $this->actingAs($admin)->getJson('/api/memberships')->assertOk()->json();
+
+        $this->assertSame([], $payload['candidates']);
+    }
+
+    public function test_candidates_exclude_members_of_other_organizations(): void
+    {
+        [$admin] = $this->memberWithRole(Membership::ROLE_ADMIN);
+        $foreign = User::factory()->create(['email' => 'lain@example.org']);
+        Membership::factory()->create([
+            'organization_id' => Organization::factory()->create()->getKey(),
+            'user_id' => $foreign->getKey(),
+        ]);
+
+        $payload = $this->actingAs($admin)->getJson('/api/memberships')->assertOk()->json();
+
+        $this->assertSame([], $payload['candidates']);
+    }
+
+    public function test_candidates_follow_the_search_term(): void
+    {
+        [$admin] = $this->memberWithRole(Membership::ROLE_ADMIN);
+        User::factory()->pending()->create(['name' => 'Budi', 'email' => 'budi@gmail.com']);
+        User::factory()->pending()->create(['name' => 'Sari', 'email' => 'sari@gmail.com']);
+
+        $payload = $this->actingAs($admin)->getJson('/api/memberships?q=sari')->assertOk()->json();
+
+        $this->assertSame(['sari@gmail.com'], array_column($payload['candidates'], 'email'));
+    }
+
+    public function test_added_candidate_leaves_the_candidate_list(): void
+    {
+        [$admin] = $this->memberWithRole(Membership::ROLE_ADMIN);
+        $newcomer = User::factory()->pending()->create(['email' => 'baru@example.org']);
+
+        $this->actingAs($admin)
+            ->postJson('/api/memberships', ['email' => 'baru@example.org', 'role' => Membership::ROLE_BORROWER])
+            ->assertCreated();
+
+        $payload = $this->actingAs($admin)->getJson('/api/memberships')->assertOk()->json();
+
+        $this->assertSame([], $payload['candidates']);
+        $this->assertSame(User::STATUS_ACTIVE, $newcomer->fresh()->status);
+    }
+
+    public function test_operator_does_not_receive_candidates(): void
+    {
+        [$operator] = $this->memberWithRole(Membership::ROLE_OPERATOR);
+        User::factory()->pending()->create();
+
+        $payload = $this->actingAs($operator)->getJson('/api/memberships')->assertOk()->json();
+
+        $this->assertSame([], $payload['candidates']);
+    }
+
     /**
      * @return array{0: User, 1: Membership}
      */

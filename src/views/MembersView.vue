@@ -38,6 +38,10 @@ const STATUS_OPTIONS = [
 
 const memberships = ref([])
 const meta = ref(null)
+/* Akun pendaftar mandiri (belum punya membership) — hanya untuk admin. */
+const candidates = ref([])
+const candidateRoles = reactive({})
+const candidateBusy = reactive({})
 const loading = ref(false)
 const error = ref(null)
 
@@ -81,6 +85,10 @@ async function load(pageNumber = 1) {
     const payload = await apiGet(`/memberships?${params.toString()}`)
     memberships.value = payload.data ?? []
     meta.value = payload.meta ?? null
+    candidates.value = payload.candidates ?? []
+    for (const candidate of candidates.value) {
+      candidateRoles[candidate.id] ??= 'borrower'
+    }
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Gagal memuat daftar anggota.'
   } finally {
@@ -110,6 +118,28 @@ async function submitAdd() {
     }
   } finally {
     addBusy.value = false
+  }
+}
+
+/*
+ * Akun pendaftar mandiri: admin menautkannya lewat peran yang dipilih. Endpoint
+ * sama dengan "Tambah anggota", jadi akun pending langsung diaktifkan server.
+ */
+async function addCandidate(candidate) {
+  candidateBusy[candidate.id] = true
+  try {
+    const payload = await apiPost('/memberships', {
+      email: candidate.email,
+      role: candidateRoles[candidate.id] ?? 'borrower',
+    })
+    toast.ok(
+      `${payload.data?.user?.name ?? candidate.name} ditambahkan sebagai ${payload.data?.role_label ?? 'anggota'}.`,
+    )
+    await load(meta.value?.current_page ?? 1)
+  } catch (e) {
+    toast.err(e instanceof ApiError ? e.message : 'Gagal menambah anggota.')
+  } finally {
+    candidateBusy[candidate.id] = false
   }
 }
 
@@ -244,6 +274,18 @@ function statusTone(status) {
   return 'neutral'
 }
 
+/* Nada badge untuk status akun (bukan status membership). */
+function accountTone(status) {
+  if (status === 'active') return 'ok'
+  if (status === 'pending') return 'warn'
+  return 'neutral'
+}
+
+function formatDate(value) {
+  if (!value) return '-'
+  return new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(new Date(value))
+}
+
 function initials(name) {
   if (!name) return '-'
   return name
@@ -372,6 +414,64 @@ watch(memberships, () => {
       </div>
     </form>
 
+    <section
+      v-if="isAdmin && !loading && !error && candidates.length"
+      class="candidates"
+      aria-label="Akun terdaftar yang belum menjadi anggota"
+    >
+      <h2 class="candidates__title">Belum menjadi anggota ({{ candidates.length }})</h2>
+      <p class="candidates__lede">
+        Akun ini mendaftar sendiri tanpa kode organisasi, jadi belum muncul di daftar anggota dan
+        belum bisa masuk. Pilih peran lalu tambahkan supaya akunnya aktif di organisasi ini.
+      </p>
+      <ul class="roster">
+        <li v-for="item in candidates" :key="`candidate-${item.id}`" class="member">
+          <span class="member__avatar num" aria-hidden="true">{{ initials(item.name) }}</span>
+
+          <div class="member__id">
+            <p class="member__name">{{ item.name }}</p>
+            <p class="member__meta num">{{ item.email }}</p>
+            <p class="member__meta num">
+              <template v-if="item.created_at">MENDAFTAR {{ formatDate(item.created_at) }}</template>
+              <template v-else>Waktu daftar tidak tercatat</template>
+            </p>
+          </div>
+
+          <div class="member__cell">
+            <span class="member__cell-label" aria-hidden="true">PERAN</span>
+            <label :for="`candidate-role-${item.id}`" class="visually-hidden">Role</label>
+            <select
+              :id="`candidate-role-${item.id}`"
+              v-model="candidateRoles[item.id]"
+              class="input input--sm"
+            >
+              <option v-for="opt in ROLE_OPTIONS" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+
+          <div class="member__cell">
+            <span class="member__cell-label" aria-hidden="true">STATUS AKUN</span>
+            <StatusBadge :tone="accountTone(item.status)">{{ item.status_label }}</StatusBadge>
+          </div>
+
+          <div class="member__actions">
+            <div class="row-actions">
+              <button
+                type="button"
+                class="btn btn--primary"
+                :disabled="candidateBusy[item.id]"
+                @click="addCandidate(item)"
+              >
+                {{ candidateBusy[item.id] ? 'Menambahkan…' : 'Tambahkan' }}
+              </button>
+            </div>
+          </div>
+        </li>
+      </ul>
+    </section>
+
     <LoadingState v-if="loading" label="Memuat daftar anggota" />
 
     <ErrorState v-else-if="error" :message="error" @retry="() => load()" />
@@ -392,14 +492,7 @@ watch(memberships, () => {
             <p class="member__name">{{ item.user?.name ?? '-' }}</p>
             <p class="member__meta num">{{ item.user?.email ?? '-' }}</p>
             <p class="member__meta num">
-              <template v-if="item.joined_at">
-                BERGABUNG
-                {{
-                  new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(
-                    new Date(item.joined_at),
-                  )
-                }}
-              </template>
+              <template v-if="item.joined_at">BERGABUNG {{ formatDate(item.joined_at) }}</template>
               <template v-else>Belum aktif</template>
             </p>
           </div>
@@ -605,6 +698,29 @@ watch(memberships, () => {
   font-size: var(--ln-micro);
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+/* Akun pendaftar mandiri: calon anggota, ditautkan dengan memilih peran. */
+.candidates {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.candidates__title {
+  margin: 0;
+  color: var(--ln-text-2);
+  font-family: var(--ln-font-mono);
+  font-size: var(--ln-micro);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.candidates__lede {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--ln-text-2);
+  font-size: 0.875rem;
 }
 
 /* Baris filter: label mono huruf besar, garis rule atas-bawah. */

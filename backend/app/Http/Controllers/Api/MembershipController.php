@@ -27,6 +27,9 @@ use Illuminate\Validation\ValidationException;
  */
 class MembershipController extends Controller
 {
+    /** Batas daftar akun pendaftar mandiri yang dikirim ke panel anggota. */
+    private const CANDIDATE_LIMIT = 10;
+
     public function index(Request $request): AnonymousResourceCollection
     {
         $this->authorize('viewAny', Membership::class);
@@ -51,7 +54,45 @@ class MembershipController extends Controller
             ->orderBy('id')
             ->paginate($data['limit'] ?? 25);
 
-        return MembershipResource::collection($memberships);
+        // Akun yang mendaftar sendiri tanpa kode organisasi tidak punya
+        // membership, jadi tidak akan pernah muncul di daftar di atas dan admin
+        // tidak punya cara menemukannya untuk ditautkan. Ikutkan daftarnya;
+        // hanya admin yang boleh menambah anggota, jadi hanya admin yang
+        // menerimanya.
+        $candidates = $request->user()->can('create', Membership::class)
+            ? $this->candidates($data['q'] ?? null)
+            : [];
+
+        return MembershipResource::collection($memberships)
+            ->additional(['candidates' => $candidates]);
+    }
+
+    /**
+     * Akun terdaftar yang belum menjadi anggota organisasi mana pun.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function candidates(?string $term): array
+    {
+        return User::query()
+            ->whereDoesntHave('memberships', fn ($query) => $query->withoutOrganizationScope())
+            ->when($term, fn ($query, $search) => $query->where(
+                fn ($sub) => $sub
+                    ->where('name', 'ilike', "%{$search}%")
+                    ->orWhere('email', 'ilike', "%{$search}%"),
+            ))
+            ->orderByDesc('id')
+            ->limit(self::CANDIDATE_LIMIT)
+            ->get()
+            ->map(fn (User $user): array => [
+                'id' => $user->getKey(),
+                'name' => $user->name,
+                'email' => $user->email,
+                'status' => $user->status,
+                'status_label' => $user->statusLabel(),
+                'created_at' => $user->created_at?->toIso8601String(),
+            ])
+            ->all();
     }
 
     /**
