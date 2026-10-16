@@ -41,6 +41,9 @@ class UpdateAssetRequest extends FormRequest
             ],
             'purchase_date' => ['sometimes', 'nullable', 'date', 'before_or_equal:today'],
             'purchase_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
+            'daily_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
+            'min_days' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:365'],
+            'deposit_amount' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
             'warranty_until' => [
                 'sometimes',
                 'nullable',

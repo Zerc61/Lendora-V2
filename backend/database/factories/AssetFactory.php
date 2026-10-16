@@ -34,9 +34,31 @@ class AssetFactory extends Factory
             'serial_number' => null,
             'purchase_date' => null,
             'purchase_price' => null,
+            // Aset hasil factory bisa dipesan: tanpa tarif, booking ditolak.
+            'daily_rate' => '150000.00',
+            'min_days' => null,
+            'deposit_amount' => null,
             'warranty_until' => null,
             'notes' => null,
         ];
+    }
+
+    /**
+     * Aset tanpa tarif harian: belum bisa dipesan.
+     */
+    public function withoutRate(): static
+    {
+        return $this->state(fn (): array => ['daily_rate' => null]);
+    }
+
+    public function minDays(int $days): static
+    {
+        return $this->state(fn (): array => ['min_days' => $days]);
+    }
+
+    public function rate(string $amount): static
+    {
+        return $this->state(fn (): array => ['daily_rate' => $amount]);
     }
 
     public function retired(): static

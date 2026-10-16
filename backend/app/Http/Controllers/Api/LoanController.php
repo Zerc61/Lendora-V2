@@ -36,7 +36,9 @@ class LoanController extends Controller
         $policy = OrganizationPolicy::resolve(app(OrganizationContext::class)->id());
         $cutoff = now()->subHours($policy->pickup_window_hours);
 
-        $query = Loan::query()->with(['items.asset', 'borrower']);
+        // `latestPayment` satu kueri untuk seluruh halaman, jadi pengelola bisa
+        // melihat status pembayaran tiap booking tanpa kueri per baris.
+        $query = Loan::query()->with(['items.asset', 'borrower', 'latestPayment']);
 
         if (! $management) {
             $query->where('borrower_id', $request->user()->getKey());
@@ -97,7 +99,7 @@ class LoanController extends Controller
 
     public function show(int $loan): LoanResource
     {
-        $with = ['items.asset', 'borrower'];
+        $with = ['items.asset', 'borrower', 'latestPayment'];
 
         // Riwayat kondisi hanya untuk operator dan admin (D-33).
         if ($this->management()) {

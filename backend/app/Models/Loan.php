@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -105,6 +106,12 @@ class Loan extends Model
         'ends_at',
         'due_at',
         'purpose',
+        'days',
+        'rate_snapshot',
+        'subtotal',
+        'deposit_snapshot',
+        'currency',
+        'pricing_snapshot',
         'approved_by',
         'approved_at',
         'rejection_reason',
@@ -122,6 +129,10 @@ class Loan extends Model
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
             'due_at' => 'datetime',
+            'rate_snapshot' => 'decimal:2',
+            'subtotal' => 'decimal:2',
+            'deposit_snapshot' => 'decimal:2',
+            'pricing_snapshot' => 'array',
             'approved_at' => 'datetime',
             'checked_out_at' => 'datetime',
             'returned_at' => 'datetime',
@@ -147,6 +158,14 @@ class Loan extends Model
     public function returnedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'returned_by');
+    }
+
+    /**
+     * Pembayaran terakhir booking ini (sumbu pembayaran, Tahap 4).
+     */
+    public function latestPayment(): HasOne
+    {
+        return $this->hasOne(Payment::class)->latestOfMany();
     }
 
     public function items(): HasMany

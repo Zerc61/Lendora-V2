@@ -21,8 +21,8 @@ abstract class AppNotification extends Notification
      *     body: string,
      *     action_url: string,
      *     action_label: string,
-     *     organization_id: int,
-     *     organization_name: string,
+     *     organization_id?: int,
+     *     organization_name?: string,
      *     loan_id?: int|null
      * }  $payload
      */

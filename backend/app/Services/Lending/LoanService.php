@@ -7,9 +7,12 @@ use App\Models\Loan;
 use App\Models\LoanItem;
 use App\Models\LoanReservation;
 use App\Models\OrganizationPolicy;
+use App\Models\Payment;
 use App\Models\User;
+use App\Models\WalletTransaction;
 use App\Services\Audit\AuditRecorder;
 use App\Services\Notifications\NotificationDispatcher;
+use App\Services\Payments\PaymentService;
 use App\Support\Tenancy\OrganizationContext;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
@@ -28,15 +31,19 @@ class LoanService
 
     public function __construct(
         private AvailabilityService $availability,
+        private PricingService $pricing,
         private OrganizationContext $context,
         private NotificationDispatcher $notifications,
+        private PaymentService $payments,
     ) {}
 
     /**
      * @param  array{starts_at: Carbon, ends_at: Carbon, purpose?: ?string}  $attributes
      * @param  list<int>  $assetIds
+     * @param  bool  $autoApprove  Langsung disetujui tanpa antrean saat kebijakan
+     *                             provider tidak mewajibkan persetujuan.
      */
-    public function create(User $borrower, array $attributes, array $assetIds, AuditRecorder $audit): Loan
+    public function create(User $borrower, array $attributes, array $assetIds, AuditRecorder $audit, bool $autoApprove = false): Loan
     {
         $result = $this->availability->evaluate(
             $assetIds,
@@ -49,7 +56,14 @@ class LoanService
             throw ValidationException::withMessages($this->errorsFrom($result));
         }
 
-        $loan = DB::transaction(function () use ($borrower, $attributes, $assetIds, $audit): Loan {
+        // Harga dihitung dari tarif provider saat ini, lalu dibekukan pada loan.
+        $quote = $this->pricing->quote(
+            Asset::query()->whereIn('id', $assetIds)->orderBy('name')->get(),
+            $attributes['starts_at'],
+            $attributes['ends_at'],
+        );
+
+        $loan = $this->guardConstraint(fn (): Loan => DB::transaction(function () use ($borrower, $attributes, $assetIds, $audit, $quote, $autoApprove): Loan {
             $loan = new Loan([
                 'organization_id' => $this->context->id(),
                 'borrower_id' => $borrower->getKey(),
@@ -57,6 +71,12 @@ class LoanService
                 'starts_at' => $attributes['starts_at'],
                 'ends_at' => $attributes['ends_at'],
                 'purpose' => $attributes['purpose'] ?? null,
+                'days' => $quote['days'],
+                'rate_snapshot' => $quote['rate_total'],
+                'subtotal' => $quote['subtotal'],
+                'deposit_snapshot' => $quote['deposit_total'],
+                'currency' => $quote['currency'],
+                'pricing_snapshot' => ['currency' => $quote['currency'], 'lines' => $quote['lines']],
             ]);
             $loan->save();
 
@@ -74,16 +94,24 @@ class LoanService
                 organization: $loan->organization,
             );
 
+            if ($autoApprove) {
+                $this->applyApproval($loan, null, $audit, ['automatic' => true]);
+            }
+
             return $loan->load(['items.asset', 'borrower']);
-        });
+        }));
 
         // Kirim setelah commit: kegagalan notifikasi tidak membatalkan pengajuan.
-        $this->notifications->loanRequested($loan, $borrower);
+        if ($autoApprove) {
+            $this->notifications->loanApproved($loan);
+        } else {
+            $this->notifications->loanRequested($loan, $borrower);
+        }
 
         return $loan;
     }
 
-    public function approve(Loan $loan, User $actor, AuditRecorder $audit): Loan
+    public function approve(Loan $loan, ?User $actor, AuditRecorder $audit): Loan
     {
         $approved = $this->guardConstraint(function () use ($loan, $actor, $audit): Loan {
             return DB::transaction(function () use ($loan, $actor, $audit): Loan {
@@ -116,34 +144,7 @@ class LoanService
                     ]);
                 }
 
-                $before = ['status' => $locked->status];
-
-                $locked->status = Loan::STATUS_APPROVED;
-                $locked->approved_by = $actor->getKey();
-                $locked->approved_at = now();
-                $locked->due_at = $locked->ends_at;
-                $locked->save();
-
-                foreach ($assetIds as $assetId) {
-                    LoanReservation::query()->create([
-                        'organization_id' => $locked->organization_id,
-                        'loan_id' => $locked->getKey(),
-                        'asset_id' => $assetId,
-                        'status' => Loan::STATUS_APPROVED,
-                        'starts_at' => $locked->starts_at,
-                        'ends_at' => $locked->ends_at,
-                    ]);
-                }
-
-                $audit->record(
-                    action: 'loan.approved',
-                    subject: $locked,
-                    before: $before,
-                    after: $this->auditable($locked),
-                    organization: $locked->organization,
-                );
-
-                return $locked->load(['items.asset', 'borrower']);
+                return $this->applyApproval($locked, $actor, $audit);
             });
         });
 
@@ -151,6 +152,46 @@ class LoanService
         $this->notifications->loanApproved($approved);
 
         return $approved;
+    }
+
+    /**
+     * Menuliskan status disetujui plus baris reservasinya. Dipakai oleh
+     * persetujuan manual dan oleh persetujuan otomatis saat kebijakan provider
+     * tidak mewajibkan antrean.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function applyApproval(Loan $loan, ?User $actor, AuditRecorder $audit, array $context = []): Loan
+    {
+        $before = ['status' => $loan->status];
+
+        $loan->status = Loan::STATUS_APPROVED;
+        $loan->approved_by = $actor?->getKey();
+        $loan->approved_at = now();
+        $loan->due_at = $loan->ends_at;
+        $loan->save();
+
+        foreach ($loan->items()->pluck('asset_id')->all() as $assetId) {
+            LoanReservation::query()->create([
+                'organization_id' => $loan->organization_id,
+                'loan_id' => $loan->getKey(),
+                'asset_id' => $assetId,
+                'status' => Loan::STATUS_APPROVED,
+                'starts_at' => $loan->starts_at,
+                'ends_at' => $loan->ends_at,
+            ]);
+        }
+
+        $audit->record(
+            action: 'loan.approved',
+            subject: $loan,
+            before: $before,
+            after: $this->auditable($loan),
+            context: $context,
+            organization: $loan->organization,
+        );
+
+        return $loan->load(['items.asset', 'borrower']);
     }
 
     public function reject(Loan $loan, User $actor, string $reason, AuditRecorder $audit): Loan
@@ -198,6 +239,9 @@ class LoanService
             // Aset dilepas: baris reservasi dihapus, periode bisa diminta orang lain.
             LoanReservation::query()->where('loan_id', $locked->getKey())->delete();
 
+            // Kembalikan saldo dompet bila booking dibatalkan setelah dibayar via dompet.
+            $this->refundWalletPayment($locked, $actor, $audit);
+
             $audit->record(
                 action: 'loan.cancelled',
                 subject: $locked,
@@ -214,6 +258,56 @@ class LoanService
         $this->notifications->loanCancelled($cancelled, $actor);
 
         return $cancelled;
+    }
+
+    /**
+     * Kembalikan saldo dompet bila loan dibatalkan setelah dibayar via dompet.
+     * Membuat WalletTransaction tipe refund untuk audit trail.
+     */
+    private function refundWalletPayment(Loan $loan, User $actor, AuditRecorder $audit): void
+    {
+        $payment = $this->payments->paidFor($loan);
+
+        if ($payment === null || $payment->payment_method !== Payment::METHOD_WALLET) {
+            return;
+        }
+
+        $walletTx = $payment->walletTransaction;
+
+        if ($walletTx === null || $walletTx->status !== WalletTransaction::STATUS_SUCCESS) {
+            return;
+        }
+
+        $reference = 'REFUND-'.$payment->order_id;
+        $user = $walletTx->user;
+
+        DB::transaction(function () use ($user, $payment, $reference, $actor, $audit, $loan) {
+            // Sekali per pembayaran: pengembalian ganda tidak boleh menambah
+            // saldo dua kali (indeks unik `reference_id` adalah lapis keduanya).
+            if (WalletTransaction::query()->where('reference_id', $reference)->exists()) {
+                return;
+            }
+
+            $user->walletTransactions()->create([
+                'amount' => $payment->amount,
+                'type' => WalletTransaction::TYPE_REFUND,
+                'reference_id' => $reference,
+                'status' => WalletTransaction::STATUS_SUCCESS,
+                'metadata' => ['payment_id' => $payment->getKey(), 'actor_id' => $actor->getKey()],
+            ]);
+
+            $user->increment('wallet_balance', $payment->amount);
+
+            $audit->record(
+                action: 'wallet.refunded',
+                subject: $payment,
+                after: [
+                    'amount' => $payment->amount,
+                    'reason' => 'loan_cancelled',
+                ],
+                organization: $loan->organization,
+            );
+        });
     }
 
     /**

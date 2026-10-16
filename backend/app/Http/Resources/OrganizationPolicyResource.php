@@ -32,6 +32,8 @@ class OrganizationPolicyResource extends JsonResource
                 ?? OrganizationPolicy::DEFAULT_MAX_ACTIVE_LOANS,
             'require_approval' => $this->require_approval
                 ?? OrganizationPolicy::DEFAULT_REQUIRE_APPROVAL,
+            'require_prepayment' => $this->require_prepayment
+                ?? OrganizationPolicy::DEFAULT_REQUIRE_PREPAYMENT,
             'require_pre_checkout_inspection' => $this->require_pre_checkout_inspection
                 ?? OrganizationPolicy::DEFAULT_REQUIRE_PRE_CHECKOUT_INSPECTION,
             'require_post_return_inspection' => $this->require_post_return_inspection

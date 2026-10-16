@@ -97,6 +97,13 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // PgBouncer (endpoint pooler Neon) memakai ulang sesi server, sehingga
+            // prepared statement sisi server bisa bertabrakan dengan DDL dan gagal
+            // dengan "cached plan must not change result type". Emulasi di sisi klien
+            // menghindari prepared statement sisi server sama sekali.
+            'options' => [
+                PDO::ATTR_EMULATE_PREPARES => true,
+            ],
         ],
 
         'sqlsrv' => [

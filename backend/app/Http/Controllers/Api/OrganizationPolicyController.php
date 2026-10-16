@@ -49,6 +49,7 @@ class OrganizationPolicyController extends Controller
             'pickup_window_hours' => 'sometimes|integer|min:1|max:720',
             'max_active_loans' => 'sometimes|integer|min:1|max:100',
             'require_approval' => 'sometimes|boolean',
+            'require_prepayment' => 'sometimes|boolean',
             'require_pre_checkout_inspection' => 'sometimes|boolean',
             'require_post_return_inspection' => 'sometimes|boolean',
             'allow_borrower_cancel' => 'sometimes|boolean',

@@ -34,4 +34,14 @@ class OrganizationFactory extends Factory
     {
         return $this->state(fn () => ['status' => Organization::STATUS_INACTIVE]);
     }
+
+    public function verified(): static
+    {
+        return $this->state(fn () => ['verification_status' => Organization::VERIFICATION_VERIFIED]);
+    }
+
+    public function unverified(): static
+    {
+        return $this->state(fn () => ['verification_status' => Organization::VERIFICATION_PENDING]);
+    }
 }

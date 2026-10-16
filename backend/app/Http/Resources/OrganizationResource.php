@@ -23,6 +23,12 @@ class OrganizationResource extends JsonResource
             'status' => $this->status,
             'timezone' => $this->timezone,
             'currency' => $this->currency,
+            'description' => $this->description,
+            'contact_email' => $this->contact_email,
+            'contact_phone' => $this->contact_phone,
+            'address' => $this->address,
+            'city' => $this->city,
+            'verification_status' => $this->verification_status,
         ];
     }
 }

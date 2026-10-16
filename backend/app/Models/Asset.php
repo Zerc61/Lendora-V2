@@ -87,6 +87,9 @@ class Asset extends Model
         'serial_number',
         'purchase_date',
         'purchase_price',
+        'daily_rate',
+        'min_days',
+        'deposit_amount',
         'warranty_until',
         'notes',
     ];
@@ -96,6 +99,8 @@ class Asset extends Model
         return [
             'purchase_date' => 'date',
             'purchase_price' => 'decimal:2',
+            'daily_rate' => 'decimal:2',
+            'deposit_amount' => 'decimal:2',
             'warranty_until' => 'date',
         ];
     }

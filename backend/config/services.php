@@ -35,4 +35,17 @@ return [
         ],
     ],
 
+    /*
+    | Midtrans (Tahap 4). Klien tanpa paket composer: charge Snap dan verifikasi
+    | tanda tangan notifikasi cukup lewat HTTP client Laravel.
+    | `finish_url` adalah halaman yang dibuka lagi setelah pembayaran selesai
+    | di sisi Midtrans.
+    */
+    'midtrans' => [
+        'server_key' => env('MIDTRANS_SERVER_KEY'),
+        'client_key' => env('MIDTRANS_CLIENT_KEY'),
+        'is_production' => env('MIDTRANS_IS_PRODUCTION', false),
+        'finish_url' => env('MIDTRANS_FINISH_URL', rtrim((string) env('APP_URL', ''), '/').'/booking'),
+    ],
+
 ];

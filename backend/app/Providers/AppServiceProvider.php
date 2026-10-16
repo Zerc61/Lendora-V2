@@ -41,5 +41,24 @@ class AppServiceProvider extends ServiceProvider
                     'message' => 'Terlalu banyak pendaftaran dari alamat ini. Coba lagi nanti.',
                 ], 429));
         });
+
+        // Katalog publik tanpa autentikasi, jadi dibatasi per alamat IP.
+        RateLimiter::for('public-catalog', function (Request $request) {
+            return Limit::perMinute(60)
+                ->by($request->ip())
+                ->response(fn () => response()->json([
+                    'message' => 'Terlalu banyak permintaan. Coba lagi beberapa saat lagi.',
+                ], 429));
+        });
+
+        // Pembuatan tagihan ke Midtrans dibatasi per akun: tanpa ini satu akun
+        // bisa membanjiri Snap dengan permintaan charge beruntun.
+        RateLimiter::for('payment-attempts', function (Request $request) {
+            return Limit::perMinute(10)
+                ->by($request->user()?->getKey() ?? $request->ip())
+                ->response(fn () => response()->json([
+                    'message' => 'Terlalu banyak percobaan pembayaran. Coba lagi beberapa saat lagi.',
+                ], 429));
+        });
     }
 }

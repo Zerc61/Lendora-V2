@@ -13,9 +13,10 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 #[Fillable([
-    'name', 'email', 'password', 'phone', 'avatar_path', 'status',
+    'name', 'email', 'password', 'phone', 'avatar_path', 'status', 'platform_role',
     'student_id', 'city', 'education_status', 'address',
     'birth_place', 'birth_date', 'emergency_contact_name', 'emergency_contact_phone',
+    'wallet_balance',
 ])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
@@ -52,6 +53,8 @@ class User extends Authenticatable
     public const EDUCATION_MAHASISWA = 'mahasiswa';
 
     public const EDUCATION_UMUM = 'umum';
+
+    public const PLATFORM_ROLE_ADMIN = 'admin';
 
     /** @var list<string> */
     public const EDUCATION_STATUSES = [
@@ -107,6 +110,11 @@ class User extends Authenticatable
         return $this->hasMany(Loan::class, 'borrower_id');
     }
 
+    public function walletTransactions(): HasMany
+    {
+        return $this->hasMany(WalletTransaction::class);
+    }
+
     public function activeMemberships(): HasMany
     {
         return $this->memberships()
@@ -117,6 +125,19 @@ class User extends Authenticatable
     public function isActive(): bool
     {
         return $this->status === self::STATUS_ACTIVE;
+    }
+
+    public function isWalletSufficient(int $amount): bool
+    {
+        return (int) $this->wallet_balance >= $amount;
+    }
+
+    /**
+     * Admin platform bekerja lintas organisasi, terpisah dari peran membership.
+     */
+    public function isPlatformAdmin(): bool
+    {
+        return $this->platform_role === self::PLATFORM_ROLE_ADMIN;
     }
 
     public function statusLabel(): string

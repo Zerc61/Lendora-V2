@@ -22,6 +22,26 @@ class Organization extends Model
 
     public const STATUS_INACTIVE = 'inactive';
 
+    public const VERIFICATION_PENDING = 'pending';
+
+    public const VERIFICATION_VERIFIED = 'verified';
+
+    public const VERIFICATION_REJECTED = 'rejected';
+
+    /** @var list<string> */
+    public const VERIFICATION_STATUSES = [
+        self::VERIFICATION_PENDING,
+        self::VERIFICATION_VERIFIED,
+        self::VERIFICATION_REJECTED,
+    ];
+
+    /** Label bahasa Indonesia status verifikasi; dipakai konsol platform. */
+    public const VERIFICATION_LABELS = [
+        self::VERIFICATION_PENDING => 'Menunggu verifikasi',
+        self::VERIFICATION_VERIFIED => 'Terverifikasi',
+        self::VERIFICATION_REJECTED => 'Ditolak',
+    ];
+
     protected $fillable = [
         'name',
         'slug',
@@ -29,6 +49,12 @@ class Organization extends Model
         'timezone',
         'currency',
         'settings',
+        'description',
+        'contact_email',
+        'contact_phone',
+        'address',
+        'city',
+        'verification_status',
     ];
 
     protected function casts(): array
@@ -80,5 +106,31 @@ class Organization extends Model
     public function isActive(): bool
     {
         return $this->status === self::STATUS_ACTIVE;
+    }
+
+    public function isVerified(): bool
+    {
+        return $this->verification_status === self::VERIFICATION_VERIFIED;
+    }
+
+    public function verificationStatusLabel(): string
+    {
+        return self::VERIFICATION_LABELS[$this->verification_status] ?? (string) $this->verification_status;
+    }
+
+    /**
+     * Provider hanya tampil ke publik bila aktif dan sudah diverifikasi. Dua
+     * syarat itu satu tempat, dipakai katalog publik dan resource.
+     */
+    public function isPubliclyVisible(): bool
+    {
+        return $this->isActive() && $this->isVerified();
+    }
+
+    public function scopePubliclyVisible(Builder $builder): Builder
+    {
+        return $builder
+            ->where('status', self::STATUS_ACTIVE)
+            ->where('verification_status', self::VERIFICATION_VERIFIED);
     }
 }

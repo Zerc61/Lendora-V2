@@ -54,6 +54,9 @@ class StoreAssetRequest extends FormRequest
             ],
             'purchase_date' => ['nullable', 'date', 'before_or_equal:today'],
             'purchase_price' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
+            'daily_rate' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
+            'min_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'deposit_amount' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
             'warranty_until' => [
                 'nullable',
                 'date',

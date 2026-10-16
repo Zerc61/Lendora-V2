@@ -33,6 +33,11 @@ class AssetResource extends JsonResource
             'category' => new CategoryResource($this->whenLoaded('category')),
             'location' => new LocationResource($this->whenLoaded('location')),
             'is_borrowable' => $this->lifecycle_status === Asset::LIFECYCLE_ACTIVE,
+            // Tarif terlihat oleh semua peran: peminjam perlu tahu harga sebelum
+            // mengajukan. Bukan kolom internal seperti kondisi atau harga perolehan.
+            'daily_rate' => $this->daily_rate,
+            'min_days' => $this->min_days,
+            'deposit_amount' => $this->deposit_amount,
             'photos' => AttachmentResource::collection($this->whenLoaded('photos')),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),

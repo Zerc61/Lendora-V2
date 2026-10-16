@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\Loan;
 use App\Models\OrganizationPolicy;
+use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -33,12 +34,22 @@ class LoanResource extends JsonResource
             'ends_at' => $this->ends_at?->toIso8601String(),
             'due_at' => $this->due_at?->toIso8601String(),
             'purpose' => $this->purpose,
+            'days' => $this->days,
+            'currency' => $this->currency,
+            'subtotal' => $this->subtotal,
             'rejection_reason' => $this->rejection_reason,
             'cancellation_reason' => $this->cancellation_reason,
             'approved_at' => $this->approved_at?->toIso8601String(),
             'checked_out_at' => $this->checked_out_at?->toIso8601String(),
             'returned_at' => $this->returned_at?->toIso8601String(),
             'is_late' => (bool) $this->is_late,
+            // Sumbu pembayaran. Hanya muncul bila relasinya dimuat, supaya daftar
+            // loan tidak menambah kueri per baris.
+            'payment_status' => $this->whenLoaded('latestPayment', fn (): ?string => $this->latestPayment?->status),
+            'payment_status_label' => $this->whenLoaded('latestPayment', fn (): ?string => $this->latestPayment === null
+                ? null
+                : (Payment::STATUS_LABELS[$this->latestPayment->status] ?? $this->latestPayment->status)),
+            'is_paid' => $this->whenLoaded('latestPayment', fn (): bool => (bool) $this->latestPayment?->isPaid()),
             'borrower' => new UserResource($this->whenLoaded('borrower')),
             'items' => LoanItemResource::collection($this->whenLoaded('items')),
             'condition_records' => AssetConditionRecordResource::collection($this->whenLoaded('conditionRecords')),

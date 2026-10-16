@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Attachments\AttachmentStore;
 use App\Services\Audit\AuditRecorder;
 use App\Services\Notifications\NotificationDispatcher;
+use App\Services\Payments\PaymentService;
 use App\Support\Tenancy\OrganizationContext;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +31,7 @@ class OperationsService
         private OrganizationContext $context,
         private AttachmentStore $attachments,
         private NotificationDispatcher $notifications,
+        private PaymentService $payments,
     ) {}
 
     /**
@@ -40,6 +42,7 @@ class OperationsService
      */
     public function checkout(Loan $loan, User $actor, array $items, AuditRecorder $audit): Loan
     {
+        $this->assertPaymentCleared($loan);
         $this->assertItemsMatchLoan($loan, $items);
 
         $blocked = [];
@@ -317,6 +320,30 @@ class OperationsService
                 'status' => "Transisi dari {$loan->status} ke {$to} tidak diizinkan.",
             ]);
         }
+    }
+
+    /**
+     * Gerbang bayar di muka (rencana 3.3, keputusan 5).
+     *
+     * Penjaga service, bukan transisi status: loan tetap `approved` saat lunas,
+     * dan provider yang tidak mewajibkan bayar di muka berjalan seperti
+     * sebelumnya.
+     */
+    private function assertPaymentCleared(Loan $loan): void
+    {
+        $policy = OrganizationPolicy::resolve($loan->organization_id);
+
+        if (! $policy->require_prepayment) {
+            return;
+        }
+
+        if ($this->payments->paidFor($loan) !== null) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'items' => 'Pembayaran belum lunas; serah terima ditahan.',
+        ]);
     }
 
     /**

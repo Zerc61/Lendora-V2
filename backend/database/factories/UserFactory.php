@@ -57,4 +57,11 @@ class UserFactory extends Factory
             'status' => User::STATUS_INACTIVE,
         ]);
     }
+
+    public function platformAdmin(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'platform_role' => User::PLATFORM_ROLE_ADMIN,
+        ]);
+    }
 }

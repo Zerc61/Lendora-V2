@@ -33,6 +33,8 @@ class OrganizationPolicy extends Model
 
     public const DEFAULT_REQUIRE_APPROVAL = true;
 
+    public const DEFAULT_REQUIRE_PREPAYMENT = false;
+
     public const DEFAULT_REQUIRE_PRE_CHECKOUT_INSPECTION = true;
 
     public const DEFAULT_REQUIRE_POST_RETURN_INSPECTION = true;
@@ -52,6 +54,7 @@ class OrganizationPolicy extends Model
         'pickup_window_hours',
         'max_active_loans',
         'require_approval',
+        'require_prepayment',
         'require_pre_checkout_inspection',
         'require_post_return_inspection',
         'allow_renewal',
@@ -67,6 +70,7 @@ class OrganizationPolicy extends Model
     {
         return [
             'require_approval' => 'boolean',
+            'require_prepayment' => 'boolean',
             'require_pre_checkout_inspection' => 'boolean',
             'require_post_return_inspection' => 'boolean',
             'allow_renewal' => 'boolean',
@@ -87,6 +91,7 @@ class OrganizationPolicy extends Model
             'pickup_window_hours' => self::DEFAULT_PICKUP_WINDOW_HOURS,
             'max_active_loans' => self::DEFAULT_MAX_ACTIVE_LOANS,
             'require_approval' => self::DEFAULT_REQUIRE_APPROVAL,
+            'require_prepayment' => self::DEFAULT_REQUIRE_PREPAYMENT,
             'require_pre_checkout_inspection' => self::DEFAULT_REQUIRE_PRE_CHECKOUT_INSPECTION,
             'require_post_return_inspection' => self::DEFAULT_REQUIRE_POST_RETURN_INSPECTION,
             'allow_renewal' => self::DEFAULT_ALLOW_RENEWAL,

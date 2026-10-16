@@ -36,6 +36,9 @@ class UserResource extends JsonResource
                 : null,
             'status' => $this->status,
             'status_label' => $this->statusLabel(),
+            // Hanya untuk menampilkan pintu konsol platform di UI; otorisasi
+            // tetap diperiksa di server pada setiap aksi platform.
+            'platform_role' => $this->platform_role,
             'joined_at' => $this->created_at?->toIso8601String(),
             'last_login_at' => $this->last_login_at?->toIso8601String(),
         ];

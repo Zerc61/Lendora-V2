@@ -9,6 +9,7 @@ use App\Models\Loan;
 use App\Models\MaintenanceLog;
 use App\Models\MaintenanceTicket;
 use App\Models\Membership;
+use App\Models\Organization;
 use App\Models\User;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -47,6 +48,7 @@ class EnumLabelCoverageTest extends TestCase
                 Membership::STATUS_LABELS,
             ],
             ['status user', User::STATUSES, User::STATUS_LABELS],
+            ['status verifikasi penyedia', Organization::VERIFICATION_STATUSES, Organization::VERIFICATION_LABELS],
         ];
     }
 

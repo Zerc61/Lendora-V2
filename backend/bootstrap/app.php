@@ -29,6 +29,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'organization.context' => EnsureOrganizationContext::class,
         ]);
+
+        // Notifikasi Midtrans datang dari server lain, jadi tidak bisa membawa
+        // token CSRF. Hanya jalur ini yang dikecualikan; penjaganya adalah
+        // verifikasi tanda tangan sha512 dengan kunci server.
+        $middleware->validateCsrfTokens(except: [
+            'api/payments/webhook',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
