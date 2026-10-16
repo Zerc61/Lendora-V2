@@ -92,6 +92,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/wallet/transactions', [WalletController::class, 'transactions']);
     Route::post('/wallet/topup', [WalletController::class, 'topup'])
         ->middleware('throttle:payment-attempts');
+    // Sinkronisasi status top up ke Midtrans. Dipanggil klien saat kembali dari
+    // halaman pembayaran, jadi pemakaiannya wajar (bukan percobaan bayar ganda).
+    Route::post('/wallet/topups/sync', [WalletController::class, 'syncTopups'])
+        ->middleware('throttle:payment-attempts');
 
     // Administrasi platform. Peran dari `users.platform_role`, bukan membership,
     // sehingga berada di luar konteks tenant: admin platform bekerja lintas

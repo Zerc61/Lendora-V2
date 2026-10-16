@@ -103,6 +103,110 @@ class WalletTest extends TestCase
         ])->assertUnprocessable();
     }
 
+    public function test_topup_sync_settles_pending_topup_from_midtrans_status(): void
+    {
+        Http::fake([
+            '*/v2/*' => Http::response([
+                'transaction_status' => 'settlement',
+                'fraud_status' => 'accept',
+                'gross_amount' => '50000.00',
+                'order_id' => 'WLLET-sync-settlement',
+                'status_code' => '200',
+            ]),
+        ]);
+
+        $user = User::factory()->create(['wallet_balance' => 0]);
+        WalletTransaction::create([
+            'user_id' => $user->id,
+            'amount' => 50000,
+            'type' => WalletTransaction::TYPE_TOPUP,
+            'reference_id' => 'WLLET-sync-settlement',
+            'status' => WalletTransaction::STATUS_PENDING,
+            'expires_at' => now()->addHour(),
+        ]);
+
+        $this->actingAs($user)
+            ->postJson('/api/wallet/topups/sync')
+            ->assertOk()
+            ->assertJsonPath('data.checked', 1)
+            ->assertJsonPath('data.settled', ['WLLET-sync-settlement']);
+
+        $this->assertSame(
+            WalletTransaction::STATUS_SUCCESS,
+            $user->walletTransactions()->first()->status,
+        );
+        $this->assertEquals(50000, $user->fresh()->wallet_balance);
+
+        // Panggilan kedua tidak menemukan apa pun: saldo tidak bertambah lagi.
+        $this->postJson('/api/wallet/topups/sync')
+            ->assertOk()
+            ->assertJsonPath('data.checked', 0)
+            ->assertJsonPath('data.settled', []);
+
+        $this->assertEquals(50000, $user->fresh()->wallet_balance);
+    }
+
+    public function test_topup_sync_leaves_pending_payment_untouched(): void
+    {
+        Http::fake([
+            '*/v2/*' => Http::response([
+                'transaction_status' => 'pending',
+                'gross_amount' => '50000.00',
+                'order_id' => 'WLLET-sync-pending',
+            ]),
+        ]);
+
+        $user = User::factory()->create(['wallet_balance' => 0]);
+        WalletTransaction::create([
+            'user_id' => $user->id,
+            'amount' => 50000,
+            'type' => WalletTransaction::TYPE_TOPUP,
+            'reference_id' => 'WLLET-sync-pending',
+            'status' => WalletTransaction::STATUS_PENDING,
+            'expires_at' => now()->addHour(),
+        ]);
+
+        $this->actingAs($user)
+            ->postJson('/api/wallet/topups/sync')
+            ->assertOk()
+            ->assertJsonPath('data.settled', []);
+
+        $this->assertSame(
+            WalletTransaction::STATUS_PENDING,
+            $user->walletTransactions()->first()->status,
+        );
+        $this->assertEquals(0, $user->fresh()->wallet_balance);
+    }
+
+    public function test_topup_sync_closes_transaction_midtrans_reports_as_expired(): void
+    {
+        Http::fake([
+            '*/v2/*' => Http::response([
+                'transaction_status' => 'expire',
+                'gross_amount' => '50000.00',
+                'order_id' => 'WLLET-sync-expire',
+            ]),
+        ]);
+
+        $user = User::factory()->create(['wallet_balance' => 0]);
+        WalletTransaction::create([
+            'user_id' => $user->id,
+            'amount' => 50000,
+            'type' => WalletTransaction::TYPE_TOPUP,
+            'reference_id' => 'WLLET-sync-expire',
+            'status' => WalletTransaction::STATUS_PENDING,
+            'expires_at' => now()->subMinute(),
+        ]);
+
+        $this->actingAs($user)->postJson('/api/wallet/topups/sync')->assertOk();
+
+        $this->assertSame(
+            WalletTransaction::STATUS_FAILED,
+            $user->walletTransactions()->first()->status,
+        );
+        $this->assertEquals(0, $user->fresh()->wallet_balance);
+    }
+
     public function test_webhook_adds_balance_on_settlement(): void
     {
         $user = User::factory()->create();

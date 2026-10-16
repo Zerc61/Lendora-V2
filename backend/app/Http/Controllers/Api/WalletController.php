@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\WalletTransaction;
 use App\Services\Payments\MidtransClient;
+use App\Services\Payments\WalletTransactionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -13,6 +14,12 @@ use Throwable;
 
 class WalletController extends Controller
 {
+    /**
+     * Batas transaksi yang dicek ke Midtrans per panggilan sinkronisasi. Cukup
+     * untuk top up yang baru saja dibuat, dan menjaga request tetap singkat.
+     */
+    private const SYNC_LIMIT = 5;
+
     public function __construct(protected MidtransClient $midtrans) {}
 
     public function balance(Request $request): JsonResponse
@@ -137,6 +144,60 @@ class WalletController extends Controller
                 // kunci server tidak pernah ikut dikirim.
                 'snap_client_key' => config('services.midtrans.client_key'),
                 'snap_is_production' => (bool) config('services.midtrans.is_production'),
+            ],
+        ]);
+    }
+
+    /**
+     * Sinkronkan top up yang masih pending milik pengguna ini dengan Midtrans.
+     *
+     * Dipanggil klien saat halaman dompet dibuka dan setelah halaman pembayaran
+     * ditutup. Tanpa webhook yang bisa menjangkau server (dev lokal, atau
+     * notifikasi yang gagal), inilah yang membuat saldo langsung bertambah tanpa
+     * menunggu `wallet:reconcile` terjadwal — dan tanpa mengubah konfigurasi
+     * notifikasi di dashboard Midtrans.
+     *
+     * Jalur tulis saldo tetap satu: {@see WalletTransactionService::applyStatus()}
+     * dengan penguncian dan pemeriksaan nominal yang sama dengan webhook.
+     */
+    public function syncTopups(Request $request, WalletTransactionService $wallet): JsonResponse
+    {
+        $user = $request->user();
+
+        $pending = $user->walletTransactions()
+            ->where('status', WalletTransaction::STATUS_PENDING)
+            ->where('type', WalletTransaction::TYPE_TOPUP)
+            ->where('created_at', '>=', now()->subDays(3))
+            ->orderByDesc('created_at')
+            ->limit(self::SYNC_LIMIT)
+            ->get();
+
+        $settled = [];
+
+        foreach ($pending as $transaction) {
+            try {
+                $updated = $wallet->syncWithMidtrans($transaction);
+            } catch (ValidationException) {
+                // Nominal Midtrans tidak sama dengan catatan: saldo tidak berubah.
+                continue;
+            } catch (Throwable $e) {
+                // Midtrans tidak bisa dihubungi. Barisnya tetap pending; halaman
+                // dompet tidak boleh ikut gagal hanya karena ini.
+                report($e);
+
+                continue;
+            }
+
+            if ($updated->status === WalletTransaction::STATUS_SUCCESS) {
+                $settled[] = $updated->reference_id;
+            }
+        }
+
+        return response()->json([
+            'data' => [
+                'checked' => $pending->count(),
+                'settled' => $settled,
+                'wallet_balance' => (float) $user->fresh()->wallet_balance,
             ],
         ]);
     }

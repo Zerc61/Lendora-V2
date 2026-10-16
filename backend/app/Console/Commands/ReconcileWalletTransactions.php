@@ -12,9 +12,10 @@ use Illuminate\Validation\ValidationException;
  * Rekonsiliasi transaksi dompet yang masih pending: tanya status ke Midtrans
  * dan perbarui saldo bila sudah settlement.
  *
- * Penerapan status diserahkan ke {@see WalletTransactionService::applyStatus()},
+ * Penerapan status diserahkan ke {@see WalletTransactionService::syncWithMidtrans()},
  * jadi jalur ini memakai penguncian dan pemeriksaan nominal yang sama dengan
- * webhook: notifikasi yang terlambat tidak bisa menambah saldo dua kali.
+ * webhook dan sinkronisasi dari klien: notifikasi yang terlambat tidak bisa
+ * menambah saldo dua kali.
  */
 class ReconcileWalletTransactions extends Command
 {
@@ -51,39 +52,13 @@ class ReconcileWalletTransactions extends Command
 
         foreach ($pending as $transaction) {
             try {
-                $status = $this->client->findStatus((string) $transaction->reference_id);
+                $updated = $this->wallet->syncWithMidtrans($transaction);
+            } catch (ValidationException) {
+                $this->warn("Nominal tidak cocok, dilewati: {$transaction->reference_id}");
+
+                continue;
             } catch (\Exception $e) {
                 $this->error("Error cek status {$transaction->reference_id}: ".$e->getMessage());
-
-                continue;
-            }
-
-            // Midtrans tidak mengenal order ini. Kalau masa berlakunya sudah
-            // lewat, baris ditutup lewat jalur status yang terkunci supaya tidak
-            // menggantung selamanya (404 juga dipakai Midtrans untuk order dari
-            // lingkungan lain, jadi hanya yang kedaluwarsa yang ditutup).
-            if ($status === null) {
-                if ($transaction->expires_at !== null && $transaction->expires_at->isPast()) {
-                    $this->wallet->applyStatus($transaction, 'expire');
-
-                    $this->info("Kedaluwarsa, ditutup: {$transaction->reference_id}");
-
-                    continue;
-                }
-
-                $this->warn("Tidak ditemukan: {$transaction->reference_id}");
-
-                continue;
-            }
-
-            try {
-                $updated = $this->wallet->applyStatus(
-                    $transaction,
-                    (string) ($status['transaction_status'] ?? ''),
-                    $status,
-                );
-            } catch (ValidationException $e) {
-                $this->warn("Nominal tidak cocok, dilewati: {$transaction->reference_id}");
 
                 continue;
             }

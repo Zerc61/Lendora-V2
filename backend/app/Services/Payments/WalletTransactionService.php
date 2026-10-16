@@ -54,6 +54,31 @@ class WalletTransactionService
     }
 
     /**
+     * Tanya status satu transaksi ke Midtrans lalu terapkan hasilnya.
+     *
+     * Dipakai rekonsiliasi terjadwal dan sinkronisasi saat pengguna kembali dari
+     * halaman pembayaran. Tanpa webhook yang bisa menjangkau server (dev lokal,
+     * atau notifikasi yang gagal terkirim), inilah jalur yang membuat saldo
+     * bertambah tanpa menunggu jadwal rekonsiliasi.
+     */
+    public function syncWithMidtrans(WalletTransaction $transaction): WalletTransaction
+    {
+        $status = $this->client->findStatus((string) $transaction->reference_id);
+
+        // Midtrans tidak mengenal order ini: bisa jadi order dari lingkungan
+        // lain, jadi hanya yang masa berlakunya lewat yang ditutup.
+        if ($status === null) {
+            if ($transaction->expires_at !== null && $transaction->expires_at->isPast()) {
+                return $this->applyStatus($transaction, 'expire');
+            }
+
+            return $transaction;
+        }
+
+        return $this->applyStatus($transaction, (string) ($status['transaction_status'] ?? ''), $status);
+    }
+
+    /**
      * Tulis status Midtrans ke transaksi, lalu ubah saldo bila perlu.
      *
      * Idempoten dan atomik: baris dikunci, status dibaca ulang di dalam kunci, dan

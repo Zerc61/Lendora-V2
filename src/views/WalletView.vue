@@ -3,9 +3,11 @@
  * Dompet: saldo, isi saldo lewat Midtrans, dan riwayat transaksi.
  *
  * Saldo tidak dihitung di klien. Angka datang dari /wallet/balance, dan saldo
- * baru bertambah setelah Midtrans mengabari server (webhook atau rekonsiliasi),
- * bukan setelah pengguna menutup halaman pembayaran. Karena itu halaman ini
- * menyediakan tombol muat ulang, bukan pembaruan optimistis.
+ * baru bertambah setelah server memastikan pembayarannya ke Midtrans. Halaman
+ * ini memicu pemeriksaan itu sendiri (`/wallet/topups/sync`) saat dibuka dan
+ * setelah halaman pembayaran ditutup, jadi saldo tetap masuk walau notifikasi
+ * Midtrans tidak bisa menjangkau server (mis. dev lokal tanpa tunnel) — tanpa
+ * perlu mengatur URL notifikasi di dashboard Midtrans.
  */
 import { onMounted, ref } from 'vue'
 import { apiGet, apiPost, ApiError } from '../lib/http'
@@ -44,7 +46,14 @@ const error = ref(null)
 const topupAmount = ref(50000)
 const topupBusy = ref(false)
 const topupError = ref(null)
+const settleNotice = ref(null)
 const limits = ref(topUpLimits(null))
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
 
 async function loadBalance() {
   try {
@@ -85,6 +94,63 @@ async function refresh() {
   await Promise.all([loadBalance(), load(currentPage.value)])
 }
 
+/*
+ * Tanya server status top up yang masih menunggu (server lalu menanyakan ke
+ * Midtrans). Balikannya `true` bila ada baris yang baru lunas, supaya pemanggil
+ * memuat ulang saldo.
+ */
+async function syncPendingTopUps() {
+  const waiting = transactions.value.some(
+    (transaction) => transaction.type === 'topup' && transaction.status === 'pending',
+  )
+
+  if (!waiting) {
+    return false
+  }
+
+  try {
+    const payload = await apiPost('/wallet/topups/sync', {})
+    const settled = payload?.data?.settled ?? []
+
+    if (!settled.length) {
+      return false
+    }
+
+    const total = transactions.value
+      .filter((transaction) => settled.includes(transaction.reference_id))
+      .reduce((sum, transaction) => sum + Number(transaction.amount), 0)
+
+    settleNotice.value =
+      total > 0
+        ? `Pembayaran diterima: ${fmtPrice(total)} ditambahkan ke saldo.`
+        : 'Pembayaran diterima dan saldo diperbarui.'
+
+    return true
+  } catch {
+    // Gagal bertanya ke Midtrans bukan kegagalan halaman: tombol muat ulang
+    // tetap ada, dan rekonsiliasi terjadwal menyusul.
+    return false
+  }
+}
+
+/*
+ * Setelah pembayaran, Midtrans butuh beberapa detik untuk mencatat hasilnya,
+ * jadi statusnya dicek beberapa kali. Berhenti begitu saldo bertambah.
+ */
+async function settlePendingTopUps(attempts = 3) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (await syncPendingTopUps()) {
+      break
+    }
+
+    if (attempt < attempts - 1) {
+      await wait(1500)
+    }
+  }
+
+  await refresh()
+}
+
 async function topup() {
   const message = topUpErrorMessage(topupAmount.value, limits.value)
 
@@ -95,18 +161,20 @@ async function topup() {
 
   topupBusy.value = true
   topupError.value = null
+  settleNotice.value = null
 
   try {
     const payload = await apiPost('/wallet/topup', { amount: topupAmount.value })
     const data = payload?.data ?? {}
 
     // Snap di halaman ini; kalau skripnya tidak bisa dimuat, lanjut ke halaman
-    // pembayaran Midtrans. Saldo tetap menunggu notifikasi ke server.
+    // pembayaran Midtrans. Begitu hasilnya dilaporkan, server menanyakan status
+    // ke Midtrans supaya saldo masuk tanpa menunggu notifikasi.
     const opened = await payWithSnap({
       token: data.snap_token,
       clientKey: data.snap_client_key,
       isProduction: data.snap_is_production === true,
-      onSettled: refresh,
+      onSettled: settlePendingTopUps,
     })
 
     if (opened) {
@@ -126,7 +194,13 @@ async function topup() {
   }
 }
 
-onMounted(refresh)
+onMounted(async () => {
+  await refresh()
+
+  // Pengguna yang kembali dari halaman pembayaran Midtrans mendarat di sini:
+  // status pending dicek sendiri supaya saldo langsung bertambah.
+  await settlePendingTopUps(2)
+})
 </script>
 
 <template>
@@ -148,6 +222,7 @@ onMounted(refresh)
           Saldo hanya bisa dipakai untuk sewa di Lendora. Penarikan ke rekening dan transfer ke akun
           lain belum tersedia.
         </p>
+        <p v-if="settleNotice" class="wallet__notice" role="status">{{ settleNotice }}</p>
         <p v-if="balanceError" class="field-error" role="alert">{{ balanceError }}</p>
       </div>
 
@@ -193,8 +268,8 @@ onMounted(refresh)
         </button>
 
         <p class="wallet__note">
-          Pembayaran diproses Midtrans. Saldo bertambah otomatis setelah Midtrans mengonfirmasi ke
-          server, jadi saldo bisa tertinggal beberapa detik dari pembayaranmu.
+          Pembayaran diproses Midtrans. Halaman ini mengecek sendiri status pembayaranmu ke Midtrans
+          setiap kali dibuka, jadi saldo bisa langsung bertambah setelah pembayaran selesai.
         </p>
       </form>
     </div>
@@ -270,8 +345,7 @@ onMounted(refresh)
 
 .wallet__grid {
   display: grid;
-  gap: 1rem;
-}
+  gap: 1rem;}
 
 .wallet__card {
   display: grid;
@@ -331,11 +405,18 @@ onMounted(refresh)
   color: var(--ln-text);
 }
 
+.wallet__notice {
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0.75rem;
+  background: var(--ln-ok-bg);
+  color: var(--ln-ok);
+  font-size: 0.82rem;
+}
+
 .wallet__history {
   display: grid;
   gap: 1rem;
 }
-
 .wallet__head {
   display: flex;
   align-items: center;
