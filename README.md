@@ -1053,6 +1053,7 @@ Copy from `.env.example` and fill in. Secrets below are shown as placeholders on
 | `APP_KEY` | **Yes** | `<base64:...>` | Generate with `php artisan key:generate`. Encrypts cookies and sessions |
 | `APP_DEBUG` | Yes | `true` | **Set `false` in any shared environment** |
 | `APP_URL` | Yes | `http://localhost:8000` | Also builds the `public` disk URL |
+| `FRONTEND_URL` | No | `http://localhost:5173` | SPA origin used in Midtrans return links (`/booking`, `/app/wallet`); defaults to `APP_URL`, which is correct when SPA and API share an origin |
 | `APP_LOCALE` / `APP_FALLBACK_LOCALE` | No | `en` | Locale. UI copy is Indonesian regardless of this value |
 | `BCRYPT_ROUNDS` | No | `12` | Password hashing cost (tests use `4`) |
 | `LOG_CHANNEL` / `LOG_LEVEL` | No | `stack` / `debug` | Logging |

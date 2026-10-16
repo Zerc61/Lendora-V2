@@ -107,7 +107,9 @@ class WalletController extends Controller
                     'phone' => (string) ($user->phone ?? ''),
                 ],
                 'callbacks' => [
-                    'finish' => rtrim((string) config('app.url'), '/').'/app/wallet',
+                    // Origin SPA, bukan config('app.url') (origin API): di dev
+                    // keduanya beda dan tautan balik jadi 404.
+                    'finish' => rtrim((string) config('services.midtrans.frontend_url'), '/').'/app/wallet',
                 ],
             ]);
         } catch (Throwable $e) {

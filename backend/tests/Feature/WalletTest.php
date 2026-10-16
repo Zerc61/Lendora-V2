@@ -22,6 +22,7 @@ class WalletTest extends TestCase
             'services.midtrans.server_key' => self::SERVER_KEY,
             'services.midtrans.is_production' => false,
             'services.midtrans.finish_url' => 'http://localhost:5173/wallet',
+            'services.midtrans.frontend_url' => 'http://localhost:5173',
         ]);
     }
 
@@ -82,6 +83,15 @@ class WalletTest extends TestCase
             'type' => 'topup',
             'status' => 'pending',
         ]);
+
+        // Tautan balik memakai origin SPA, bukan origin API: salah origin
+        // membuat pengguna mendarat di 404 setelah membayar di Midtrans.
+        Http::assertSent(function ($request): bool {
+            $body = $request->data();
+
+            return $request->url() === 'https://app.sandbox.midtrans.com/snap/v1/transactions'
+                && $body['callbacks']['finish'] === 'http://localhost:5173/app/wallet';
+        });
     }
 
     public function test_topup_validates_amount(): void

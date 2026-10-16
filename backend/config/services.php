@@ -1,5 +1,13 @@
 <?php
 
+/*
+ * Origin SPA, bukan origin API. Midtrans membuka tautan balik ini di browser
+ * pengguna, jadi harus menunjuk ke aplikasi Vue. Di produksi SPA dan API satu
+ * origin (APP_URL), di dev tidak (API 8000, Vite 5173) — tanpa FRONTEND_URL
+ * tautan balik jatuh ke backend dan jadi 404.
+ */
+$frontendUrl = rtrim((string) env('FRONTEND_URL', env('APP_URL', '')), '/');
+
 return [
 
     /*
@@ -38,14 +46,15 @@ return [
     /*
     | Midtrans (Tahap 4). Klien tanpa paket composer: charge Snap dan verifikasi
     | tanda tangan notifikasi cukup lewat HTTP client Laravel.
-    | `finish_url` adalah halaman yang dibuka lagi setelah pembayaran selesai
-    | di sisi Midtrans.
+    | `frontend_url` adalah origin SPA; `finish_url` halaman yang dibuka lagi
+    | setelah pembayaran selesai di sisi Midtrans.
     */
     'midtrans' => [
         'server_key' => env('MIDTRANS_SERVER_KEY'),
         'client_key' => env('MIDTRANS_CLIENT_KEY'),
         'is_production' => env('MIDTRANS_IS_PRODUCTION', false),
-        'finish_url' => env('MIDTRANS_FINISH_URL', rtrim((string) env('APP_URL', ''), '/').'/booking'),
+        'frontend_url' => $frontendUrl,
+        'finish_url' => env('MIDTRANS_FINISH_URL', $frontendUrl.'/booking'),
     ],
 
 ];
