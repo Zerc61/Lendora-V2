@@ -51,6 +51,11 @@ class AvailabilityService
                 $reason = 'Aset tidak ditemukan.';
             } elseif ($asset->lifecycle_status !== Asset::LIFECYCLE_ACTIVE) {
                 $reason = $this->lifecycleReason($asset);
+            } elseif ($asset->daily_rate === null) {
+                // PricingService menolak aset tanpa tarif, jadi ketersediaan harus
+                // menyebutkannya di sini; kalau tidak, badge bilang "bisa dipinjam"
+                // padahal pengajuan tidak akan pernah lolos.
+                $reason = 'Penyedia belum menetapkan tarif harian untuk aset ini.';
             } elseif (isset($blocked[$assetId])) {
                 $reason = 'Aset ini sudah dipesan untuk periode itu.';
             }

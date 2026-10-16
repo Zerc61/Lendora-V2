@@ -206,7 +206,7 @@ class CustomerBookingTest extends TenantTestCase
         $this->actingAs(User::factory()->create())
             ->postJson('/api/providers/'.$provider->slug.'/bookings', $this->period() + ['assets' => [$asset->getKey()]])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['assets']);
+            ->assertJsonValidationErrors(['assets.'.$asset->code]);
 
         $this->assertDatabaseCount('loans', 0);
     }

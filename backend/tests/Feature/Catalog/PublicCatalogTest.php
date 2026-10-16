@@ -181,6 +181,21 @@ class PublicCatalogTest extends TenantTestCase
             ->assertJsonPath('data.assets.0.available', false);
     }
 
+    public function test_equipment_without_a_rate_is_not_requestable(): void
+    {
+        $provider = $this->provider();
+        $asset = $this->asset($provider, ['daily_rate' => null]);
+
+        $start = now()->addDay()->startOfHour();
+        $end = $start->copy()->addHours(6);
+
+        $this->getJson($this->availabilityUrl($provider, $asset, $start, $end))
+            ->assertOk()
+            ->assertJsonPath('data.requestable', false)
+            ->assertJsonPath('data.assets.0.available', false)
+            ->assertJsonPath('data.assets.0.reason', 'Penyedia belum menetapkan tarif harian untuk aset ini.');
+    }
+
     public function test_availability_requires_a_period(): void
     {
         $provider = $this->provider();
