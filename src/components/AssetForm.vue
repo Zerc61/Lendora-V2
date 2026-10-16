@@ -28,6 +28,9 @@ const form = reactive({
   serial_number: props.asset?.serial_number ?? '',
   purchase_date: props.asset?.purchase_date ?? '',
   purchase_price: props.asset?.purchase_price == null ? '' : String(props.asset.purchase_price),
+  daily_rate: props.asset?.daily_rate == null ? '' : String(props.asset.daily_rate),
+  min_days: props.asset?.min_days == null ? '' : String(props.asset.min_days),
+  deposit_amount: props.asset?.deposit_amount == null ? '' : String(props.asset.deposit_amount),
   warranty_until: props.asset?.warranty_until ?? '',
   notes: props.asset?.notes ?? '',
 })
@@ -68,6 +71,9 @@ async function onSubmit() {
   fd.append('location_id', form.location_id || '')
   fd.append('purchase_date', form.purchase_date || '')
   fd.append('purchase_price', form.purchase_price || '')
+  fd.append('daily_rate', form.daily_rate || '')
+  fd.append('min_days', form.min_days || '')
+  fd.append('deposit_amount', form.deposit_amount || '')
   fd.append('warranty_until', form.warranty_until || '')
   fd.append('notes', form.notes ?? '')
   if (!isEdit) {
@@ -219,6 +225,59 @@ async function onSubmit() {
           />
           <p v-if="fieldError('purchase_price')" class="field-error" role="alert">
             {{ fieldError('purchase_price') }}
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="af-daily-rate">Tarif harian (Rupiah)</label>
+          <input
+            id="af-daily-rate"
+            v-model="form.daily_rate"
+            class="input"
+            type="number"
+            name="daily_rate"
+            min="0"
+            step="0.01"
+          />
+          <p class="hint">Tanpa tarif harian, peralatan ini tidak bisa dipesan customer.</p>
+          <p v-if="fieldError('daily_rate')" class="field-error" role="alert">
+            {{ fieldError('daily_rate') }}
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="af-min-days">Minimal hari sewa</label>
+          <input
+            id="af-min-days"
+            v-model="form.min_days"
+            class="input"
+            type="number"
+            name="min_days"
+            min="1"
+            step="1"
+          />
+          <p class="hint">
+            Kosongkan bila tidak ada minimum. Periode lebih pendek tetap dihitung sebanyak ini.
+          </p>
+          <p v-if="fieldError('min_days')" class="field-error" role="alert">
+            {{ fieldError('min_days') }}
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="af-deposit">Deposit (Rupiah)</label>
+          <input
+            id="af-deposit"
+            v-model="form.deposit_amount"
+            class="input"
+            type="number"
+            name="deposit_amount"
+            min="0"
+            step="0.01"
+          />
+          <p class="hint">Dicatat pada pemesanan, belum ditagih.</p>
+          <p v-if="fieldError('deposit_amount')" class="field-error" role="alert">
+            {{ fieldError('deposit_amount') }}
           </p>
         </div>
 

@@ -8,12 +8,14 @@ import { auth, bootstrap } from '../lib/auth'
  *   /         → Landing page publik (tidak butuh auth)
  *   /login    → Login
  *   /register → Register
- *   /app      → ShellHost (butuh auth) — navbar AppShell untuk borrower,
- *               sidebar AdminShell untuk admin & operasional
+ *   /app      → ShellHost (butuh auth) — navbar AppShell untuk borrower dan
+ *               pelanggan, sidebar AdminShell untuk admin & operasional
+ *   /platform → Konsol admin platform (butuh peran platform, tanpa membership)
  *
  * Guard di bawah menjamin:
  *   - Publik: '/', '/login', '/register' — bisa diakses tanpa auth
  *   - Protected: '/app/*' — butuh autentikasi, redirect ke /login
+ *   - '/platform/*' — butuh autentikasi dan peran platform
  *   - Setelah login redirect ke '/app' bukan '/'
  */
 
@@ -25,7 +27,7 @@ const routes = [
     path: '/',
     name: 'landing',
     component: () => import('../views/landing/LandingView.vue'),
-    meta: { public: true, title: 'Lendora: Manajemen Aset & Peminjaman' },
+    meta: { public: true, title: 'Sewa Alat dan Kamera' },
   },
   {
     path: '/login',
@@ -38,6 +40,26 @@ const routes = [
     name: 'register',
     component: () => import('../views/RegisterView.vue'),
     meta: { public: true, title: 'Daftar' },
+  },
+  {
+    path: '/jelajah',
+    name: 'explore',
+    component: () => import('../views/ExploreView.vue'),
+    meta: { public: true, title: 'Jelajah penyedia' },
+  },
+  {
+    path: '/jelajah/:slug',
+    name: 'explore-provider',
+    component: () => import('../views/ExploreProviderView.vue'),
+    meta: { public: true, title: 'Profil penyedia' },
+  },
+  {
+    // Customer cukup punya akun, tidak perlu membership, jadi riwayat
+    // pemesanannya sengaja tidak berada di bawah /app (shell butuh membership).
+    path: '/booking',
+    name: 'bookings',
+    component: () => import('../views/BookingsView.vue'),
+    meta: { requiresAuth: true, title: 'Booking saya' },
   },
 
   // ──────────────────────────────────────────────────────────────────────
@@ -169,10 +191,46 @@ const routes = [
         meta: { title: 'Profil' },
       },
       {
+        path: 'wallet',
+        name: 'wallet',
+        component: () => import('../views/WalletView.vue'),
+        meta: { title: 'Dompet' },
+      },
+      {
         path: 'audit',
         name: 'audit',
         component: () => import('../views/AuditView.vue'),
         meta: { title: 'Audit', roles: ['admin'] },
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // KONSOL PLATFORM — di luar /app: admin platform bekerja lintas organisasi
+  // dan tidak memerlukan membership.
+  // ──────────────────────────────────────────────────────────────────────
+  {
+    path: '/platform',
+    component: () => import('../layouts/PlatformShell.vue'),
+    meta: { requiresAuth: true, platform: true },
+    children: [
+      {
+        path: '',
+        name: 'platform-users',
+        component: () => import('../views/platform/PlatformUsersView.vue'),
+        meta: { title: 'Pengguna platform' },
+      },
+      {
+        path: 'penyedia',
+        name: 'platform-providers',
+        component: () => import('../views/platform/PlatformProvidersView.vue'),
+        meta: { title: 'Verifikasi penyedia' },
+      },
+      {
+        path: 'dompet',
+        name: 'platform-wallet',
+        component: () => import('../views/platform/PlatformWalletView.vue'),
+        meta: { title: 'Transaksi dompet' },
       },
     ],
   },
@@ -218,6 +276,11 @@ router.beforeEach(async (to) => {
 
   // Cek role bila route punya batasan role
   if (to.meta.roles && !to.meta.roles.includes(auth.role)) {
+    return { name: 'home' }
+  }
+
+  // Konsol platform hanya untuk akun yang memegang peran platform.
+  if (to.meta.platform && !auth.user?.platform_role) {
     return { name: 'home' }
   }
 

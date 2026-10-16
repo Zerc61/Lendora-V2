@@ -8,7 +8,7 @@ import { Bell, X } from '@lucide/vue'
 import { auth, switchOrganization } from '../lib/auth'
 import { theme, toggleTheme } from '../lib/theme'
 import { apiGet } from '../lib/http'
-import { NAV_BY_ROLE } from '../lib/navigation'
+import { navForRole } from '../lib/navigation'
 import { roleLabel } from '../lib/roles'
 import { reducedMotion } from '../lib/motion'
 import NotificationCenter from '../components/NotificationCenter.vue'
@@ -21,7 +21,7 @@ const route = useRoute()
 
 // Hanya tampilkan entri navigasi yang route-nya benar-benar ada (R-24).
 const navItems = computed(() =>
-  (NAV_BY_ROLE[auth.role] ?? []).filter((item) => router.hasRoute(item.name)),
+  navForRole(auth.role, auth.user).filter((item) => router.hasRoute(item.name)),
 )
 
 // Sorotan halaman aktif dihitung sendiri: section anak (mis. /app/loans/5)
@@ -481,8 +481,13 @@ onUnmounted(() => {
       </div>
     </Teleport>
 
-    <!-- Navigasi cepat mobile: bar bawah dengan ikon -->
-    <nav class="botnav" aria-label="Navigasi cepat">
+    <!-- Navigasi cepat mobile: bar bawah dengan ikon. Jumlah kolom mengikuti
+         jumlah menu agar tidak pernah melipat ke baris kedua. -->
+    <nav
+      class="botnav"
+      :style="{ '--botnav-cols': navItems.length || 5 }"
+      aria-label="Navigasi cepat"
+    >
       <RouterLink
         v-for="item in navItems"
         :key="item.name"
@@ -999,7 +1004,7 @@ onUnmounted(() => {
 @media (max-width: 60rem) {
   .botnav {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(var(--botnav-cols, 5), 1fr);
   }
 
   /* Ruang untuk bar bawah agar konten dan footer tidak tertutup. */

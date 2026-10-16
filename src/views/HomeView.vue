@@ -1,8 +1,9 @@
 <script setup>
 /*
- * Beranda per role. Tiga komposisi berbeda dalam satu bahasa visual editorial:
+ * Beranda per role. Empat komposisi berbeda dalam satu bahasa visual editorial:
  * admin → ringkasan organisasi dengan angka menghitung; operator → antrean
- * hari ini sebagai garis waktu yang terisi mengikuti gulir; borrower →
+ * hari ini sebagai garis waktu yang terisi mengikuti gulir; pelanggan (akun
+ * tanpa membership) → pintu ke jelajah, booking, dan dompet; borrower →
  * dashboard peminjaman (angka, kalender, notifikasi, katalog) lewat
  * BorrowerDashboard.vue.
  *
@@ -19,7 +20,6 @@ import { CONDITION_LABELS, fmtDateTime, LIFECYCLE_LABELS } from '../lib/format'
 import { gsap } from 'gsap'
 import { usePageMotion } from '../lib/motion'
 import LoadingState from '../components/LoadingState.vue'
-import EmptyState from '../components/EmptyState.vue'
 import ErrorState from '../components/ErrorState.vue'
 import BorrowerDashboard from '../components/BorrowerDashboard.vue'
 import PageHead from '../components/ui/PageHead.vue'
@@ -39,6 +39,40 @@ const activeOrg = computed(
 
 const isAdmin = computed(() => auth.role === 'admin')
 const isOperator = computed(() => auth.role === 'operator')
+
+/*
+ * Akun tanpa membership aktif (pelanggan) tidak punya antrean organisasi,
+ * jadi berandanya adalah pintu ke pekerjaan yang memang bisa ia lakukan.
+ */
+const customerLinks = computed(() => {
+  const links = [
+    {
+      to: { name: 'explore' },
+      label: 'Jelajah penyedia',
+      hint: 'Cari alat dan kamera yang tersedia, lalu tentukan periode sewamu.',
+    },
+    {
+      to: { name: 'bookings' },
+      label: 'Booking saya',
+      hint: 'Pantau pengajuan, status persetujuan, dan pembayaran sewa.',
+    },
+    {
+      to: { name: 'wallet' },
+      label: 'Dompet',
+      hint: 'Saldo dan riwayat transaksi akunmu.',
+    },
+  ]
+
+  if (auth.user?.platform_role) {
+    links.push({
+      to: { name: 'platform-users' },
+      label: 'Konsol platform',
+      hint: 'Aktivasi akun baru dan verifikasi penyedia.',
+    })
+  }
+
+  return links
+})
 
 const dateFmt = new Intl.DateTimeFormat('id-ID', {
   dateStyle: 'medium',
@@ -162,6 +196,16 @@ const operatorStats = computed(() => {
 
 const groups = [
   {
+    key: 'awaiting_approval',
+    title: 'Menunggu persetujuan',
+    meta: 'PESANAN MASUK',
+    primary: (item) => item.borrower_name ?? 'Penyewa tidak tercatat',
+    secondary: (item) => fmt(item.starts_at),
+    to: (item) => ({ name: 'loan-detail', params: { id: item.id } }),
+    moreTo: { name: 'loans', query: { group: 'pending' } },
+    moreLabel: 'Lihat semua pesanan masuk',
+  },
+  {
     key: 'awaiting_pickup',
     title: 'Menunggu diambil',
     meta: 'SERAH TERIMA',
@@ -225,11 +269,25 @@ const marqueeItems = [
       </div>
     </div>
 
-    <EmptyState
-      v-if="!activeOrg"
-      title="Belum ada organisasi aktif"
-      hint="Minta admin mengundangmu sehingga akun ini bisa memakai Lendora."
-    />
+    <section v-if="!activeOrg" aria-labelledby="pelanggan-title" class="home__section">
+      <div class="home__section-head">
+        <p class="index-label">PELANGGAN</p>
+        <h2 id="pelanggan-title" class="home__section-title">Sewa alat tanpa jadi anggota.</h2>
+        <p class="lede">
+          Akun ini belum terhubung ke organisasi penyedia mana pun, jadi beranda penyedia belum
+          tersedia. Menyewa dari penyedia mana pun tetap bisa kamu lakukan dari sini.
+        </p>
+      </div>
+
+      <ul class="customer-links">
+        <li v-for="link in customerLinks" :key="link.label" class="customer-links__row">
+          <RouterLink :to="link.to" class="customer-link">
+            <span class="customer-link__label">{{ link.label }}</span>
+            <span class="customer-link__hint">{{ link.hint }}</span>
+          </RouterLink>
+        </li>
+      </ul>
+    </section>
 
     <template v-else>
       <section v-if="isAdmin" aria-labelledby="ringkasan-title" class="home__section">
@@ -315,8 +373,8 @@ const marqueeItems = [
                   </li>
                 </ul>
                 <p v-if="today[group.key]?.length > 6" class="queue__more">
-                  <RouterLink :to="{ name: 'operations' }" class="link-sweep">
-                    Lihat semua di papan operasi
+                  <RouterLink :to="group.moreTo ?? { name: 'operations' }" class="link-sweep">
+                    {{ group.moreLabel ?? 'Lihat semua di papan operasi' }}
                   </RouterLink>
                 </p>
                 <p v-else-if="!today[group.key]?.length" class="queue__empty">
@@ -453,6 +511,41 @@ const marqueeItems = [
 
 .more-link {
   margin: 0;
+}
+
+/* Pintu pelanggan: daftar baris tautan, bukan kartu. */
+.customer-links {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--ln-border);
+}
+
+.customer-links__row {
+  border-bottom: 1px solid var(--ln-border);
+}
+
+.customer-link {
+  display: grid;
+  gap: 0.25rem;
+  padding-block: 1rem;
+  color: var(--ln-text);
+  text-decoration: none;
+}
+
+.customer-link:hover .customer-link__label {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.customer-link__label {
+  font-weight: 600;
+}
+
+.customer-link__hint {
+  max-width: 60ch;
+  color: var(--ln-text-2);
+  font-size: 0.875rem;
 }
 
 /* Garis waktu antrean operator. */

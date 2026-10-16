@@ -113,6 +113,7 @@ onBeforeUnmount(() => {
       <a href="#manfaat">Manfaat</a>
       <a href="#fitur">Fitur</a>
       <a href="#alur">Alur kerja</a>
+      <a href="/jelajah">Jelajah</a>
     </nav>
 
     <div class="header-actions">
@@ -160,6 +161,7 @@ onBeforeUnmount(() => {
         <a href="#manfaat" @click="closeMenu()"> Manfaat </a>
         <a href="#fitur" @click="closeMenu()"> Fitur </a>
         <a href="#alur" @click="closeMenu()"> Alur kerja </a>
+        <a href="/jelajah" @click="closeMenu()"> Jelajah </a>
         <div class="mobile-nav-actions">
           <a href="/login" class="button button-ghost" @click="closeMenu()">Masuk</a>
           <a href="/login" class="button button-dark" @click="closeMenu()">Mulai</a>

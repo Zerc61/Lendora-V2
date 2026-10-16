@@ -11,7 +11,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { apiGet, ApiError } from '../lib/http'
 import { readQuery, writeQuery } from '../lib/filterQuery'
 import { auth } from '../lib/auth'
-import { fmtDateTime, LOAN_TONES } from '../lib/format'
+import { fmtDateTime, LOAN_TONES, PAYMENT_TONES } from '../lib/format'
 import { usePageMotion } from '../lib/motion'
 import StatusBadge from '../components/StatusBadge.vue'
 import LoadingState from '../components/LoadingState.vue'
@@ -171,6 +171,14 @@ watch(loading, async (isLoading) => {
                 </StatusBadge>
                 <span v-if="loan.is_overdue" class="tag tag--warn">Terlambat</span>
                 <span v-if="loan.is_awaiting_pickup" class="tag tag--ok"> Siap diambil </span>
+                <!-- Sumbu pembayaran: pengelola perlu tahu booking mana yang
+                     tertahan karena belum dibayar, tanpa membuka satu per satu. -->
+                <StatusBadge
+                  v-if="isManagement && loan.payment_status"
+                  :tone="PAYMENT_TONES[loan.payment_status] ?? 'neutral'"
+                >
+                  {{ loan.payment_status_label }}
+                </StatusBadge>
               </div>
               <h2 class="row__title">{{ itemNames(loan) || 'Pinjaman aset' }}</h2>
               <p class="row__meta text-2">

@@ -13,7 +13,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import { apiGet, apiPost, ApiError } from '../lib/http'
 import { toast } from '../lib/toast'
 import { auth } from '../lib/auth'
-import { fmtDate, fmtDateTime, LOAN_TONES } from '../lib/format'
+import { fmtDate, fmtDateTime, fmtPrice, LOAN_TONES } from '../lib/format'
 import { usePageMotion } from '../lib/motion'
 import StatusBadge from '../components/StatusBadge.vue'
 import LoadingState from '../components/LoadingState.vue'
@@ -243,6 +243,20 @@ const FLOW_STEPS = computed(() => {
         <div v-if="loan.purpose">
           <dt>Keperluan</dt>
           <dd class="facts__wide">{{ loan.purpose }}</dd>
+        </div>
+        <div v-if="loan.subtotal != null">
+          <dt>Total sewa</dt>
+          <dd>
+            {{ fmtPrice(loan.subtotal) }}
+            <template v-if="loan.days">, {{ loan.days }} hari</template>
+          </dd>
+        </div>
+        <div v-if="loan.payment_status_label">
+          <dt>Pembayaran</dt>
+          <dd>
+            {{ loan.payment_status_label }}
+            <template v-if="loan.is_paid">, serah terima boleh</template>
+          </dd>
         </div>
       </dl>
 

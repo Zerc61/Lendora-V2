@@ -82,6 +82,29 @@ export const LOAN_TONES = {
   returned: 'neutral',
 }
 
+/*
+ * Nada visual status pembayaran booking. Labelnya tetap dari API
+ * (`payment_status_label`), sama seperti status dompet.
+ */
+export const PAYMENT_TONES = {
+  pending: 'warn',
+  paid: 'ok',
+  expired: 'neutral',
+  failed: 'err',
+  refunded: 'warn',
+}
+
+/*
+ * Warna status dompet. Labelnya tetap dari API (`status_label`); di sini hanya
+ * nada visualnya, supaya badge tidak menebak arti status.
+ */
+export const WALLET_TONES = {
+  pending: 'warn',
+  success: 'ok',
+  failed: 'err',
+  reversed: 'neutral',
+}
+
 export const ISSUE_TONES = {
   open: 'warn',
   reviewing: 'info',

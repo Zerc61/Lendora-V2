@@ -55,60 +55,60 @@ function revealHero() {
 const capabilities = [
   {
     number: '01',
-    title: 'Katalog yang bisa ditelusuri',
-    copy: 'Peminjam bisa melihat aset apa yang tersedia, di mana lokasinya, dan kapan bisa digunakan.',
+    title: 'Katalog penyedia yang bisa ditelusuri',
+    copy: 'Penyewa melihat penyedia terverifikasi, alat apa yang tersedia, dan tarif hariannya.',
     details: [
-      'Cari berdasarkan nama dan deskripsi',
-      'Saring dengan kategori dan lokasi',
-      'Periksa ketersediaan untuk periode pilihan',
+      'Cari penyedia, nama alat, dan deskripsinya',
+      'Tarif harian, minimum hari, dan deposit tampil apa adanya',
+      'Ajukan periode, ketersediaannya diperiksa saat itu',
     ],
-    audience: 'UNTUK PEMINJAM',
+    audience: 'UNTUK PENYEWA',
     icon: Search,
     scene: 'catalog',
-    label: 'PENEMUAN ASET',
+    label: 'PENEMUAN ALAT',
   },
   {
     number: '02',
-    title: 'Permintaan sampai serah terima',
-    copy: 'Peminjam mengajukan periode. Operator meninjau permintaan, lalu kedua pihak mengikuti status sampai aset kembali.',
+    title: 'Pesanan sampai serah terima',
+    copy: 'Penyewa mengajukan periode. Penyedia meninjau, lalu kedua pihak mengikuti status sampai alat kembali.',
     details: [
-      'Periode wajib, alasan peminjaman opsional',
-      'Operator dapat menyetujui atau menolak dengan alasan',
+      'Penyedia menyetujui atau menolak dengan alasan',
+      'Pembayaran lewat Midtrans saat kebijakan penyedia memintanya',
       'Timeline menunjukkan status dan langkah berikutnya',
     ],
-    audience: 'PEMINJAM & OPERATOR',
+    audience: 'PENYEWA & PENYEDIA',
     icon: ClipboardCheck,
     scene: 'request',
-    label: 'ALUR PEMINJAMAN',
+    label: 'ALUR PESANAN',
   },
   {
     number: '03',
-    title: 'Kondisi aset tetap tercatat',
-    copy: 'Pemeriksaan sebelum pengambilan dan setelah pengembalian menjaga kondisi aset tetap diketahui.',
+    title: 'Kondisi alat tetap tercatat',
+    copy: 'Pemeriksaan sebelum pengambilan dan setelah pengembalian menjaga kondisi alat tetap diketahui.',
     details: [
       'Catat kondisi, catatan, dan foto bila diperlukan',
-      'Masalah dapat ditindaklanjuti sebagai issue',
-      'Aset menunggu inspeksi sebelum kembali aktif',
+      'Masalah dapat ditindaklanjuti sebagai laporan',
+      'Alat menunggu inspeksi sebelum kembali tersedia',
     ],
-    audience: 'UNTUK OPERATOR',
+    audience: 'UNTUK PENYEDIA',
     icon: Wrench,
     scene: 'condition',
-    label: 'KONDISI ASET',
+    label: 'KONDISI ALAT',
   },
 ]
 
 const steps = [
-  { number: '01', label: 'Temukan', detail: 'Cari aset dan periksa jadwal ketersediaannya.' },
-  { number: '02', label: 'Ajukan', detail: 'Kirim permintaan untuk periode yang dibutuhkan.' },
+  { number: '01', label: 'Temukan', detail: 'Cari penyedia dan alat, lalu periksa jadwalnya.' },
+  { number: '02', label: 'Ajukan', detail: 'Kirim pengajuan sewa untuk periode yang dibutuhkan.' },
   {
     number: '03',
     label: 'Ambil',
-    detail: 'Operator menyetujui dan mencatat kondisi saat serah terima.',
+    detail: 'Penyedia menyetujui, pembayaran diselesaikan, kondisi alat dicatat.',
   },
   {
     number: '04',
     label: 'Kembalikan',
-    detail: 'Aset diperiksa kembali dan riwayat kondisinya tersimpan.',
+    detail: 'Alat diperiksa kembali dan riwayat kondisinya tersimpan.',
   },
 ]
 
@@ -268,26 +268,24 @@ onUnmounted(() => {
       <!-- Hero -->
       <section id="awal" class="hero section-wrap">
         <div class="hero-copy-block">
-          <p class="hero-kicker">
-            <span class="kicker-rule"></span> MANAJEMEN ASET &amp; PEMINJAMAN
-          </p>
+          <p class="hero-kicker"><span class="kicker-rule"></span> SEWA ALAT &amp; KAMERA</p>
           <CursorProximityField>
             <h1 class="hero-title">
-              <span class="hero-title-line">Aset terkelola.</span>
-              <span class="hero-title-line hero-title-muted">Peminjaman jelas.</span>
+              <span class="hero-title-line">Peralatan terawat.</span>
+              <span class="hero-title-line hero-title-muted">Sewa jadi jelas.</span>
             </h1>
           </CursorProximityField>
           <p class="hero-copy">
-            Lendora membantu organisasi menemukan aset, memeriksa ketersediaannya, dan mengikuti
-            setiap peminjaman sampai kembali.
+            Lendora menghubungkan penyewa dengan penyedia alat: temukan kamera dan perlengkapan yang
+            tersedia, periksa jadwalnya, lalu ikuti pesanan dari persetujuan sampai pengembalian.
           </p>
           <div class="hero-actions">
-            <a class="button button-dark" href="/login"> Mulai sekarang </a>
-            <a class="text-link" href="#fitur">
-              Jelajahi fitur <ArrowRight :size="15" aria-hidden="true" />
+            <a class="button button-dark" href="/jelajah">Jelajah peralatan</a>
+            <a class="text-link" href="#alur">
+              Lihat alurnya <ArrowRight :size="15" aria-hidden="true" />
             </a>
           </div>
-          <div class="hero-index"><span>ASET DALAM SATU ALUR</span></div>
+          <div class="hero-index"><span>PENYEWA · PENYEDIA · SATU ALUR</span></div>
         </div>
         <div class="hero-visual">
           <VintageCameraViewer :active="cameraActive" />
@@ -307,20 +305,20 @@ onUnmounted(() => {
         <div class="section-wrap problem-layout">
           <div class="section-heading">
             <p class="section-index">TANTANGAN</p>
-            <h2>Pinjam aset seharusnya tidak jadi pekerjaan detektif.</h2>
+            <h2>Menyewa alat seharusnya tidak jadi pekerjaan detektif.</h2>
           </div>
           <div class="problem-content">
             <p class="problem-lead">
-              Saat catatan aset, jadwal peminjaman, dan kondisi tersimpan terpisah, jawaban
+              Saat katalog penyedia, jadwal sewa, dan kondisi barang tersimpan terpisah, jawaban
               sederhana pun sulit dicari.
             </p>
             <div class="problem-list">
               <div>
-                <p>Aset mana yang tersedia untuk tanggal tertentu?</p>
+                <p>Alat mana yang tersedia untuk tanggal tertentu?</p>
                 <span class="problem-mark" aria-hidden="true">?</span>
               </div>
               <div>
-                <p>Siapa yang sedang menggunakannya?</p>
+                <p>Siapa yang sedang memakainya?</p>
                 <span class="problem-mark" aria-hidden="true">?</span>
               </div>
               <div>
@@ -332,7 +330,7 @@ onUnmounted(() => {
           <div class="problem-conclusion">
             <span class="conclusion-mark" aria-hidden="true">&#x2198;</span>
             <p>
-              Satu ruang untuk melihat aset dan proses peminjamannya, dengan riwayat yang saling
+              Satu ruang untuk katalog penyedia dan pesanan sewa, dengan riwayat kondisi yang saling
               terhubung.
             </p>
           </div>
@@ -347,8 +345,8 @@ onUnmounted(() => {
             <h2>Informasi yang dibutuhkan,<br />di saat yang tepat.</h2>
           </div>
           <p class="section-intro">
-            Dari pencarian pertama sampai perawatan, setiap bagian membantu orang tahu apa yang
-            terjadi dan apa langkah berikutnya.
+            Dari pencarian pertama sampai pengembalian, tiap bagian membantu penyewa dan penyedia
+            tahu apa yang terjadi dan apa langkah berikutnya.
           </p>
         </div>
         <div
@@ -379,7 +377,7 @@ onUnmounted(() => {
               >
                 <template v-if="item.scene === 'catalog'">
                   <div class="art-window-bar">
-                    <span></span><span></span><span></span><b>KATALOG ASET</b>
+                    <span></span><span></span><span></span><b>KATALOG ALAT</b>
                   </div>
                   <div class="art-search">
                     <Search :size="14" /><span>Cari nama atau deskripsi</span
@@ -398,7 +396,7 @@ onUnmounted(() => {
                     <span
                       ><b>Proyektor portabel</b><small>Ruang 02 &middot; Presentasi</small></span
                     >
-                    <em class="art-muted">DIPINJAM</em>
+                    <em class="art-muted">DISEWA</em>
                   </div>
                   <div class="art-inventory-row">
                     <i>TV</i>
@@ -408,13 +406,13 @@ onUnmounted(() => {
                 </template>
                 <template v-else-if="item.scene === 'request'">
                   <div class="art-request-head">
-                    <span>PERMINTAAN PEMINJAMAN</span>
+                    <span>PESANAN SEWA</span>
                   </div>
                   <div class="art-request-title">Kamera mirrorless <span>KM-014</span></div>
                   <div class="art-request-dates">
                     <div><small>PERIODE</small><b>12 – 14 Mei</b></div>
                     <ArrowRight :size="15" />
-                    <div><small>PEMINJAM</small><b>Tim produksi</b></div>
+                    <div><small>PENYEWA</small><b>Tim produksi</b></div>
                   </div>
                   <div class="art-request-flow">
                     <span class="is-done"><i>&#x2713;</i> Diajukan</span>
@@ -425,7 +423,7 @@ onUnmounted(() => {
                 </template>
                 <template v-else>
                   <div class="art-condition-head">
-                    <span>PEMERIKSAAN ASET</span><span>KM-014</span>
+                    <span>PEMERIKSAAN ALAT</span><span>KM-014</span>
                   </div>
                   <div class="art-condition-line">
                     <b>Kondisi fisik</b><span class="art-check">TERCATAT</span>
@@ -438,10 +436,10 @@ onUnmounted(() => {
                     <span class="art-issue">ADA CATATAN</span>
                   </div>
                   <div class="art-condition-note">
-                    <Wrench :size="15" /><span>Ditindaklanjuti melalui issue &amp; perawatan</span>
+                    <Wrench :size="15" /><span>Ditindaklanjuti lewat laporan &amp; perawatan</span>
                   </div>
                   <div class="art-condition-gate">
-                    <span></span>Menunggu inspeksi sebelum aset aktif kembali
+                    <span></span>Menunggu inspeksi sebelum alat tersedia kembali
                   </div>
                 </template>
                 <span class="capability-art-index">{{ item.label }}</span>
@@ -454,7 +452,7 @@ onUnmounted(() => {
           <p>GULIR / GESER LANJUT <ArrowRight :size="13" aria-hidden="true" /></p>
           <div class="feature-note">
             <span class="note-line"></span>
-            <p>Contoh antarmuka dan nama aset bersifat ilustratif.</p>
+            <p>Contoh antarmuka dan nama alat bersifat ilustratif.</p>
           </div>
         </div>
       </section>
@@ -463,11 +461,11 @@ onUnmounted(() => {
       <section id="alur" class="workflow-section">
         <div class="section-wrap workflow-wrap">
           <div class="workflow-heading">
-            <p class="section-index">ALUR PEMINJAMAN</p>
+            <p class="section-index">ALUR SEWA</p>
             <h2>Dari pencarian<br />sampai kembali.</h2>
             <p>
-              Satu proses yang bisa diikuti peminjam dan operator, dengan kondisi aset diperiksa
-              saat serah terima.
+              Satu proses yang bisa diikuti penyewa dan penyedia, dengan kondisi alat diperiksa saat
+              serah terima.
             </p>
           </div>
           <div class="workflow-steps">
@@ -486,7 +484,7 @@ onUnmounted(() => {
               <span class="aside-symbol"><RotateCcw :size="18" aria-hidden="true" /></span>
               <p>
                 <strong>Setelah kembali</strong><br />
-                Jika ada masalah, aset dapat ditindaklanjuti melalui pencatatan issue dan perawatan.
+                Jika ada masalah, alat dapat ditindaklanjuti lewat laporan dan perawatan.
               </p>
               <Wrench :size="16" aria-hidden="true" />
             </div>
@@ -498,17 +496,17 @@ onUnmounted(() => {
       <section class="closing-section section-wrap">
         <div class="closing-label">
           <span>LANGKAH BERIKUTNYA</span>
-          <span>UNTUK ORGANISASI</span>
+          <span>UNTUK PENYEWA &amp; PENYEDIA</span>
         </div>
         <div class="closing-main">
-          <h2>Kenali alurnya.<br /><span>Mulai kelola aset.</span></h2>
+          <h2>Kenali alurnya.<br /><span>Mulai sewa alat.</span></h2>
           <div class="closing-actions">
-            <a class="button button-light" href="/login"> Masuk ke aplikasi </a>
-            <a class="button button-outline" href="/register">Daftar organisasi</a>
+            <a class="button button-light" href="/jelajah"> Jelajah peralatan </a>
+            <a class="button button-outline" href="/register">Daftar akun</a>
           </div>
         </div>
         <div class="closing-foot">
-          <span>ASET · PEMINJAMAN · KONDISI</span>
+          <span>ALAT · SEWA · KONDISI</span>
           <ArrowDown :size="14" aria-hidden="true" />
           <span>LENDORA V2</span>
         </div>
@@ -519,7 +517,7 @@ onUnmounted(() => {
       <a class="footer-brand" href="#awal" aria-label="Lendora, kembali ke awal">
         <img src="/brand/lendora-lockup-inverse.svg" width="150" height="24" alt="Lendora" />
       </a>
-      <p>Menjaga aset dan peminjaman tetap jelas.</p>
+      <p>Menyewa dan menyewakan alat tetap jelas.</p>
       <nav aria-label="Navigasi footer">
         <a href="#manfaat">Manfaat</a>
         <a href="#fitur">Fitur</a>

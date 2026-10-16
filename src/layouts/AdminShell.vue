@@ -15,7 +15,7 @@ import { Bell, X } from '@lucide/vue'
 import { auth, logout, switchOrganization } from '../lib/auth'
 import { theme, toggleTheme } from '../lib/theme'
 import { apiGet } from '../lib/http'
-import { NAV_BY_ROLE } from '../lib/navigation'
+import { navForRole } from '../lib/navigation'
 import { roleLabel } from '../lib/roles'
 import { reducedMotion } from '../lib/motion'
 import NotificationCenter from '../components/NotificationCenter.vue'
@@ -28,7 +28,7 @@ const route = useRoute()
 
 // Hanya tampilkan entri navigasi yang route-nya benar-benar ada (R-24).
 const navItems = computed(() =>
-  (NAV_BY_ROLE[auth.role] ?? []).filter((item) => router.hasRoute(item.name)),
+  navForRole(auth.role, auth.user).filter((item) => router.hasRoute(item.name)),
 )
 
 // Sorotan halaman aktif: section anak menandai induknya; beranda hanya di root.

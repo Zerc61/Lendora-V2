@@ -208,6 +208,22 @@ onMounted(async () => {
 
             <div class="toggle-field">
               <input
+                id="require-prepayment"
+                v-model="policy.require_prepayment"
+                type="checkbox"
+                class="toggle"
+              />
+              <label for="require-prepayment">
+                <strong>Wajib bayar di muka</strong>
+                <span class="hint">
+                  Serah terima ditahan sampai pembayaran booking lunas. Tanpa ini, pembayaran hanya
+                  dicatat.
+                </span>
+              </label>
+            </div>
+
+            <div class="toggle-field">
+              <input
                 id="require-pre-checkout"
                 v-model="policy.require_pre_checkout_inspection"
                 type="checkbox"
