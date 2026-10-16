@@ -1,0 +1,11 @@
+{
+  "name": "lendora-v2/vercel-php",
+  "private": true,
+  "description": "Hanya untuk build Vercel: memasang dependensi Composer Laravel di backend/ sebelum runtime PHP membungkusnya.",
+  "require": {},
+  "scripts": {
+    "vercel": [
+      "@composer install --working-dir=backend --no-dev --no-interaction --no-progress --optimize-autoloader"
+    ]
+  }
+}

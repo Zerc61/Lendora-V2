@@ -1,0 +1,14 @@
+# Rahasia lokal: kredensial Neon tidak boleh ikut terunggah.
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+.git
+.kilo
+test-results
+node_modules
+backend/node_modules
+backend/tests
+backend/.phpunit.result.cache
+backend/.phpunit.cache
+dist
