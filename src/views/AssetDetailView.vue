@@ -283,6 +283,19 @@ async function confirmRemoveAsset() {
                 <dd>{{ asset.category?.name ?? 'Tanpa kategori' }}</dd>
               </div>
               <div>
+                <dt>Tarif sewa</dt>
+                <dd>
+                  <span v-if="asset.daily_rate != null" class="num">
+                    {{ fmtPrice(asset.daily_rate) }} / hari
+                  </span>
+                  <template v-else>Belum ditetapkan</template>
+                </dd>
+              </div>
+              <div v-if="asset.min_days">
+                <dt>Minimal sewa</dt>
+                <dd>{{ asset.min_days }} hari</dd>
+              </div>
+              <div>
                 <dt>Lokasi</dt>
                 <dd>{{ asset.location?.name ?? 'Tidak dicatat' }}</dd>
               </div>

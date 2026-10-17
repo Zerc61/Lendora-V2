@@ -379,6 +379,15 @@ watch(slug, () => {
                       Total
                       {{ fmtPrice(bookingResults[asset.id].subtotal) ?? 'dihitung penyedia' }}
                     </p>
+                    <p
+                      v-if="bookingResults[asset.id].status === 'requested'"
+                      class="equipment__period"
+                    >
+                      Belum ditagih — menunggu persetujuan penyedia. Bayar setelah disetujui.
+                    </p>
+                    <p v-else class="equipment__period">
+                      Lakukan pembayaran di halaman Booking saya.
+                    </p>
                     <RouterLink :to="{ name: 'bookings' }" class="btn">
                       Lihat booking saya
                     </RouterLink>

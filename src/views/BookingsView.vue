@@ -240,6 +240,11 @@ onMounted(async () => {
 
               <p class="bookings__period">{{ periodText(booking) }}</p>
 
+              <p v-if="booking.status === 'requested'" class="bookings__hint">
+                Belum ditagih: menunggu persetujuan penyedia. Setelah disetujui, tombol bayar muncul
+                di sini.
+              </p>
+
               <ul v-if="booking.items?.length" class="bookings__lines">
                 <li v-for="line in booking.items" :key="line.asset_id" class="bookings__line">
                   <span class="bookings__line-name">{{ line.name ?? line.code }}</span>
