@@ -15,9 +15,20 @@ use RuntimeException;
  */
 class MidtransClient
 {
-    private const SANDBOX_BASE_URL = 'https://app.sandbox.midtrans.com';
+    /*
+     * Dua host berbeda, dan tertukar adalah penyebab umum "pembayaran tidak
+     * pernah masuk": halaman/token Snap dilayani `app.*`, sedangkan Core API
+     * (`/v2/...`, tempat status transaksi ditanyakan) dilayani `api.*`.
+     * Menembak `/v2/...` ke host Snap menjawab 404, yang mudah disalahartikan
+     * sebagai "order tidak ada".
+     */
+    private const SANDBOX_SNAP_URL = 'https://app.sandbox.midtrans.com';
 
-    private const PRODUCTION_BASE_URL = 'https://app.midtrans.com';
+    private const PRODUCTION_SNAP_URL = 'https://app.midtrans.com';
+
+    private const SANDBOX_API_URL = 'https://api.sandbox.midtrans.com';
+
+    private const PRODUCTION_API_URL = 'https://api.midtrans.com';
 
     /**
      * Kunci server belum diatur: panggilan charge tidak mungkin dilakukan.
@@ -35,7 +46,7 @@ class MidtransClient
      */
     public function charge(array $payload): array
     {
-        $response = $this->request()->post($this->baseUrl().'/snap/v1/transactions', $payload);
+        $response = $this->request()->post($this->snapBaseUrl().'/snap/v1/transactions', $payload);
 
         if ($response->failed()) {
             throw new RuntimeException('Midtrans menolak permintaan charge: '.$response->body());
@@ -81,9 +92,19 @@ class MidtransClient
      */
     public function findStatus(string $orderId): ?array
     {
-        $response = $this->request()->get($this->baseUrl().'/v2/'.$orderId.'/status');
+        $response = $this->request()->get($this->apiBaseUrl().'/v2/'.$orderId.'/status');
 
         if ($response->status() === 404) {
+            return null;
+        }
+
+        $body = $response->json() ?? [];
+
+        // Sebagian jawaban "tidak ada" datang sebagai 200 dengan status_code
+        // 404 di badan: order belum ada di Core API (mis. Snap yang belum
+        // dibayar). Perlakukan sama seperti 404 supaya tidak tertukar dengan
+        // status transaksi sungguhan.
+        if ((string) ($body['status_code'] ?? '') === '404') {
             return null;
         }
 
@@ -91,7 +112,30 @@ class MidtransClient
             throw new RuntimeException('Midtrans gagal mengambil status: '.$response->body());
         }
 
-        return $response->json() ?? [];
+        return $body;
+    }
+
+    /**
+     * Uji kunci ke Midtrans tanpa mencetak nilainya.
+     *
+     * Order contoh yang tidak ada sudah cukup: kunci yang diterima menjawab 404
+     * ("transaction doesn't exist"), kunci yang salah dijawab 401. Awalan kunci
+     * tidak bisa dipercaya untuk ini.
+     *
+     * @return array{ok: bool, code: string, message: string}
+     */
+    public function probe(): array
+    {
+        $response = $this->request()->get($this->apiBaseUrl().'/v2/LENDORA-PROBE/status');
+        $body = $response->json() ?? [];
+
+        $code = (string) ($body['status_code'] ?? $response->status());
+
+        return [
+            'ok' => ! in_array($code, ['401', '403'], true),
+            'code' => $code,
+            'message' => (string) ($body['status_message'] ?? ''),
+        ];
     }
 
     private function request(): PendingRequest
@@ -110,12 +154,22 @@ class MidtransClient
     }
 
     /**
-     * Basis URL Midtrans yang sedang dipakai (sandbox atau production).
+     * Host halaman dan token Snap (charge).
      */
-    public function baseUrl(): string
+    public function snapBaseUrl(): string
     {
         return config('services.midtrans.is_production')
-            ? self::PRODUCTION_BASE_URL
-            : self::SANDBOX_BASE_URL;
+            ? self::PRODUCTION_SNAP_URL
+            : self::SANDBOX_SNAP_URL;
+    }
+
+    /**
+     * Host Core API tempat status transaksi ditanyakan.
+     */
+    public function apiBaseUrl(): string
+    {
+        return config('services.midtrans.is_production')
+            ? self::PRODUCTION_API_URL
+            : self::SANDBOX_API_URL;
     }
 }

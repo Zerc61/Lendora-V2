@@ -43,6 +43,12 @@ class WalletReconcileTest extends TenantTestCase
 
         $this->artisan('wallet:reconcile')->assertExitCode(0);
 
+        // Status harus ditanyakan ke host Core API, bukan host halaman Snap:
+        // `/v2/...` di host Snap menjawab 404 dan pembayaran tampak tak pernah
+        // masuk.
+        Http::assertSent(fn ($request): bool => $request->url()
+            === 'https://api.sandbox.midtrans.com/v2/WLLET-reconcile-test/status');
+
         $transaction->refresh();
         $this->assertSame(WalletTransaction::STATUS_SUCCESS, $transaction->status);
         $user->refresh();
