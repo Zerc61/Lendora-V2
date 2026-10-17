@@ -21,6 +21,15 @@ use Tests\Support\TenantTestCase;
  */
 class MaintenanceTicketTest extends TenantTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Uji tiket perawatan tanpa pagar bayar di muka; gerbang pembayaran
+        // diuji di PaymentTest.
+        $this->policy(['require_prepayment' => false]);
+    }
+
     /**
      * @param  array<string, mixed>  $attributes
      */

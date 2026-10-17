@@ -230,10 +230,28 @@ class PaymentTest extends TenantTestCase
     {
         ['loan' => $loan, 'operator' => $operator, 'asset' => $asset] = $this->approvedBooking();
 
+        // Penyedia memilih menonaktifkan bayar di muka; alur tetap berjalan
+        // tanpa pembayaran.
+        $this->policy(['require_prepayment' => false], Organization::query()->findOrFail($loan->organization_id));
+
         $this->actingAs($operator)
             ->postJson('/api/loans/'.$loan->getKey().'/checkout', $this->items($asset))
             ->assertOk()
             ->assertJsonPath('data.status', Loan::STATUS_CHECKED_OUT);
+    }
+
+    public function test_prepayment_gate_is_required_by_default(): void
+    {
+        ['loan' => $loan, 'operator' => $operator, 'asset' => $asset] = $this->approvedBooking();
+
+        // Tanpa baris kebijakan pun: alur bawaan menahan serah terima sampai
+        // pembayaran lunas.
+        $this->assertDatabaseCount('organization_policies', 0);
+
+        $this->actingAs($operator)
+            ->postJson('/api/loans/'.$loan->getKey().'/checkout', $this->items($asset))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['items']);
     }
 
     public function test_customer_sees_payment_status_in_history(): void

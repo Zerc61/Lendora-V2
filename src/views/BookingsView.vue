@@ -241,8 +241,16 @@ onMounted(async () => {
               <p class="bookings__period">{{ periodText(booking) }}</p>
 
               <p v-if="booking.status === 'requested'" class="bookings__hint">
-                Belum ditagih: menunggu persetujuan penyedia. Setelah disetujui, tombol bayar muncul
-                di sini.
+                Belum ditagih: menunggu persetujuan operator. Setelah disetujui, kamu diminta
+                membayar yang dulu sebelum aset diserahkan.
+              </p>
+
+              <p
+                v-else-if="booking.status === 'approved' && !booking.payment"
+                class="bookings__hint"
+              >
+                Booking sudah disetujui. Bayar dulu — setelah lunas, operator akan menyerahkan
+                asetmu sesuai jadwal pengambilan.
               </p>
 
               <ul v-if="booking.items?.length" class="bookings__lines">
@@ -273,20 +281,17 @@ onMounted(async () => {
                 </template>
               </p>
 
-              <button
-                v-if="booking.can_pay"
-                type="button"
-                class="btn btn--primary bookings__pay"
-                :disabled="payPendingId === booking.id"
-                @click="pay(booking)"
+              <p
+                v-if="booking.payment?.status === 'paid' && booking.status === 'approved'"
+                class="bookings__hint"
               >
-                {{ payPendingId === booking.id ? 'Menyiapkan…' : 'Bayar sekarang' }}
-              </button>
+                Pembayaran diterima — tunggu operator untuk serah terima.
+              </p>
 
               <button
                 v-if="booking.can_pay && walletBalance !== null"
                 type="button"
-                class="btn bookings__pay"
+                class="btn btn--primary bookings__pay"
                 :disabled="
                   walletPendingId === booking.id ||
                   payPendingId === booking.id ||
@@ -295,6 +300,16 @@ onMounted(async () => {
                 @click="payWithWallet(booking)"
               >
                 {{ walletPendingId === booking.id ? 'Memotong saldo…' : 'Bayar dengan saldo' }}
+              </button>
+
+              <button
+                v-if="booking.can_pay"
+                type="button"
+                class="btn btn--ghost bookings__pay"
+                :disabled="payPendingId === booking.id"
+                @click="pay(booking)"
+              >
+                {{ payPendingId === booking.id ? 'Menyiapkan…' : 'Bayar via Midtrans' }}
               </button>
 
               <p

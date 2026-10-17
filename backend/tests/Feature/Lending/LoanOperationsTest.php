@@ -22,6 +22,15 @@ use Tests\Support\TenantTestCase;
  */
 class LoanOperationsTest extends TenantTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Uji loop operasional tanpa pagar bayar di muka; gerbang pembayaran
+        // diuji sendiri di PaymentTest.
+        $this->policy(['require_prepayment' => false]);
+    }
+
     /**
      * @param  list<Asset>  $assets
      * @param  array<string, mixed>  $attributes

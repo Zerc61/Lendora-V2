@@ -33,7 +33,7 @@ class OrganizationPolicy extends Model
 
     public const DEFAULT_REQUIRE_APPROVAL = true;
 
-    public const DEFAULT_REQUIRE_PREPAYMENT = false;
+    public const DEFAULT_REQUIRE_PREPAYMENT = true;
 
     public const DEFAULT_REQUIRE_PRE_CHECKOUT_INSPECTION = true;
 

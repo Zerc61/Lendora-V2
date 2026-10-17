@@ -390,6 +390,10 @@ const FLOW_STEPS = computed(() => {
           </RouterLink>
         </div>
 
+        <p v-if="canCheckout && !loan.is_paid" class="block__hint" role="status">
+          Pembayaran belum lunas — serah terima akan ditahan sampai penyewa membayar di muka.
+        </p>
+
         <form v-if="rejectOpen" class="mini-form panel--alt" @submit.prevent="reject">
           <div class="field">
             <label for="reject-reason">Alasan penolakan</label>
@@ -523,6 +527,12 @@ const FLOW_STEPS = computed(() => {
   margin: 0;
   font-size: var(--ln-display-sm);
   letter-spacing: -0.045em;
+}
+
+.block__hint {
+  margin: 0;
+  color: var(--ln-text-2);
+  font-size: var(--ln-micro);
 }
 
 /* Garis waktu alur: nomor mono, node, dan rail progres. */

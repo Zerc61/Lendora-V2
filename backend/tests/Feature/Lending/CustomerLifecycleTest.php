@@ -21,6 +21,15 @@ use Tests\Support\TenantTestCase;
  */
 class CustomerLifecycleTest extends TenantTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Uji siklus tanpa pagar bayar di muka; gerbang pembayaran diuji di
+        // PaymentTest.
+        $this->policy(['require_prepayment' => false]);
+    }
+
     private function provider(): Organization
     {
         return Organization::factory()->verified()->create();
@@ -54,6 +63,7 @@ class CustomerLifecycleTest extends TenantTestCase
         $asset = $this->asset($provider, ['daily_rate' => '150000.00']);
         $customer = User::factory()->create();
         $operator = $this->userIn($provider, Membership::ROLE_OPERATOR);
+        $this->policy(['require_prepayment' => false], $provider);
 
         $loanId = $this->book($provider, $asset, $customer);
 
@@ -103,6 +113,7 @@ class CustomerLifecycleTest extends TenantTestCase
         $asset = $this->asset($provider);
         $customer = User::factory()->create();
         $operator = $this->userIn($provider, Membership::ROLE_OPERATOR);
+        $this->policy(['require_prepayment' => false], $provider);
 
         $loanId = $this->book($provider, $asset, $customer);
 
