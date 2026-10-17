@@ -12,34 +12,16 @@ use Illuminate\Support\Facades\Http;
 use Tests\Support\TenantTestCase;
 
 /**
- * Charge pembayaran booking (Tahap 4).
+ * Pembayaran sewa (Tahap 4).
  *
- * Nominal selalu dari snapshot harga di loan, bukan dari klien. Pembayaran tidak
- * mengubah status loan; pengaruhnya hanya gerbang serah terima.
+ * Hanya saldo dompet: penyewa mengisi dompet dulu, baru membayar. Dua gerbang
+ * sebelum serah terima — penyewa membayar, lalu admin memverifikasi dananya.
  */
 class PaymentTest extends TenantTestCase
 {
-    private const SERVER_KEY = 'SB-Mid-server-uji';
-
     private function provider(): Organization
     {
         return Organization::factory()->verified()->create();
-    }
-
-    private function configureMidtrans(): void
-    {
-        config([
-            'services.midtrans.server_key' => self::SERVER_KEY,
-            'services.midtrans.is_production' => false,
-            'services.midtrans.finish_url' => 'http://localhost:5173/booking',
-        ]);
-
-        Http::fake([
-            '*/snap/v1/transactions' => Http::response([
-                'token' => 'snap-token-uji',
-                'redirect_url' => 'https://app.sandbox.midtrans.com/snap/v4/redirection/snap-token-uji',
-            ]),
-        ]);
     }
 
     /**
@@ -58,13 +40,14 @@ class PaymentTest extends TenantTestCase
     /**
      * Booking customer yang sudah disetujui operator, plus aktornya.
      *
+     * @param  int  $balance  saldo dompet customer, 0 berarti belum diisi.
      * @return array{loan: Loan, customer: User, operator: User, asset: Asset, provider: Organization}
      */
-    private function approvedBooking(string $rate = '150000.00'): array
+    private function approvedBooking(string $rate = '150000.00', int $balance = 200000): array
     {
         $provider = $this->provider();
         $asset = $this->asset($provider, ['daily_rate' => $rate]);
-        $customer = User::factory()->create();
+        $customer = User::factory()->create(['wallet_balance' => $balance]);
         $operator = $this->userIn($provider, Membership::ROLE_OPERATOR);
 
         $loanId = $this->actingAs($customer)
@@ -82,62 +65,28 @@ class PaymentTest extends TenantTestCase
         return compact('loan', 'customer', 'operator', 'asset', 'provider');
     }
 
-    public function test_charge_is_created_server_side_with_snapshot_amount(): void
-    {
-        $this->configureMidtrans();
-        ['loan' => $loan, 'customer' => $customer, 'provider' => $provider] = $this->approvedBooking();
-
-        $this->actingAs($customer)
-            ->postJson('/api/providers/'.$provider->slug.'/bookings/'.$loan->getKey().'/payment')
-            ->assertCreated()
-            ->assertJsonPath('data.status', Payment::STATUS_PENDING)
-            ->assertJsonPath('data.status_label', 'Menunggu pembayaran')
-            ->assertJsonPath('data.amount', '150000.00')
-            ->assertJsonPath('data.redirect_url', 'https://app.sandbox.midtrans.com/snap/v4/redirection/snap-token-uji');
-
-        $payment = Payment::query()->withoutOrganizationScope()->firstOrFail();
-
-        $this->assertSame($loan->getKey(), $payment->loan_id);
-        $this->assertSame($provider->getKey(), $payment->organization_id);
-        $this->assertStringStartsWith('LN-'.$loan->getKey().'-', $payment->order_id);
-        $this->assertSame('150000.00', $payment->amount);
-        // Tenggat bayar mengikuti jendela pengambilan.
-        $this->assertNotNull($payment->expires_at);
-        $this->assertDatabaseHas('audit_events', ['action' => 'payment.created', 'subject_id' => $loan->getKey()]);
-
-        // Kiriman klien tidak pernah dipakai: yang dikirim ke Midtrans nominal snapshot.
-        Http::assertSent(function ($request) use ($payment): bool {
-            $body = $request->data();
-
-            return $request->url() === 'https://app.sandbox.midtrans.com/snap/v1/transactions'
-                && $body['transaction_details']['order_id'] === $payment->order_id
-                && $body['transaction_details']['gross_amount'] === 150000
-                && $body['callbacks']['finish'] === 'http://localhost:5173/booking';
-        });
-    }
-
     public function test_client_supplied_amount_is_ignored(): void
     {
-        $this->configureMidtrans();
+        Http::fake();
         ['loan' => $loan, 'customer' => $customer, 'provider' => $provider] = $this->approvedBooking();
 
         $this->actingAs($customer)
             ->postJson(
                 '/api/providers/'.$provider->slug.'/bookings/'.$loan->getKey().'/payment',
-                ['amount' => 1, 'status' => Payment::STATUS_PAID],
+                ['amount' => 1, 'status' => Payment::STATUS_PAID, 'payment_method' => Payment::METHOD_WALLET],
             )
             ->assertCreated()
             ->assertJsonPath('data.amount', '150000.00')
-            ->assertJsonPath('data.status', Payment::STATUS_PENDING);
+            ->assertJsonPath('data.status', Payment::STATUS_PAID);
+
+        $this->assertSame('50000.00', $customer->fresh()->wallet_balance);
     }
 
     public function test_payment_cannot_start_before_approval(): void
     {
-        $this->configureMidtrans();
-
         $provider = $this->provider();
         $asset = $this->asset($provider, ['daily_rate' => '150000.00']);
-        $customer = User::factory()->create();
+        $customer = User::factory()->create(['wallet_balance' => 200000]);
 
         $loanId = $this->actingAs($customer)
             ->postJson('/api/providers/'.$provider->slug.'/bookings', $this->period() + ['assets' => [$asset->getKey()]])
@@ -145,37 +94,25 @@ class PaymentTest extends TenantTestCase
             ->json('data.id');
 
         $this->actingAs($customer)
-            ->postJson('/api/providers/'.$provider->slug.'/bookings/'.$loanId.'/payment')
+            ->postJson('/api/providers/'.$provider->slug.'/bookings/'.$loanId.'/payment', [
+                'payment_method' => Payment::METHOD_WALLET,
+            ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['payment']);
 
         $this->assertDatabaseCount('payments', 0);
-        Http::assertNothingSent();
-    }
-
-    public function test_charge_is_reported_when_midtrans_is_not_configured(): void
-    {
-        config(['services.midtrans.server_key' => null]);
-        Http::fake();
-
-        ['loan' => $loan, 'customer' => $customer, 'provider' => $provider] = $this->approvedBooking();
-
-        $this->actingAs($customer)
-            ->postJson('/api/providers/'.$provider->slug.'/bookings/'.$loan->getKey().'/payment')
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors(['payment']);
-
-        $this->assertDatabaseCount('payments', 0);
-        Http::assertNothingSent();
+        // Saldo tidak tersentuh saat pembayaran ditolak.
+        $this->assertSame('200000.00', $customer->fresh()->wallet_balance);
     }
 
     public function test_customer_cannot_pay_someone_elses_booking(): void
     {
-        $this->configureMidtrans();
         ['loan' => $loan, 'provider' => $provider] = $this->approvedBooking();
 
-        $this->actingAs(User::factory()->create())
-            ->postJson('/api/providers/'.$provider->slug.'/bookings/'.$loan->getKey().'/payment')
+        $this->actingAs(User::factory()->create(['wallet_balance' => 200000]))
+            ->postJson('/api/providers/'.$provider->slug.'/bookings/'.$loan->getKey().'/payment', [
+                'payment_method' => Payment::METHOD_WALLET,
+            ])
             ->assertForbidden();
 
         $this->assertDatabaseCount('payments', 0);
@@ -183,15 +120,43 @@ class PaymentTest extends TenantTestCase
 
     public function test_payment_requires_authentication(): void
     {
-        $this->configureMidtrans();
         ['loan' => $loan, 'provider' => $provider] = $this->approvedBooking();
 
         $this->app['auth']->forgetGuards();
 
-        $this->postJson('/api/providers/'.$provider->slug.'/bookings/'.$loan->getKey().'/payment')
-            ->assertUnauthorized();
+        $this->postJson('/api/providers/'.$provider->slug.'/bookings/'.$loan->getKey().'/payment', [
+            'payment_method' => Payment::METHOD_WALLET,
+        ])->assertUnauthorized();
 
         $this->assertDatabaseCount('payments', 0);
+    }
+
+    public function test_borrower_pays_own_loan_inside_the_app(): void
+    {
+        Http::fake();
+
+        $borrower = $this->member(Membership::ROLE_BORROWER);
+        $borrower->update(['wallet_balance' => 200000]);
+
+        $loan = Loan::factory()->for($this->organization)->create([
+            'borrower_id' => $borrower->getKey(),
+            'status' => Loan::STATUS_APPROVED,
+            'subtotal' => '150000.00',
+        ]);
+
+        $this->actingAs($borrower)
+            ->postJson('/api/loans/'.$loan->getKey().'/payment', ['payment_method' => Payment::METHOD_WALLET])
+            ->assertCreated()
+            ->assertJsonPath('data.status', Payment::STATUS_PAID)
+            ->assertJsonPath('data.is_verified', false);
+
+        $this->assertSame('50000.00', $borrower->fresh()->wallet_balance);
+
+        $this->actingAs($borrower)
+            ->getJson('/api/loans/'.$loan->getKey())
+            ->assertOk()
+            ->assertJsonPath('data.is_paid', true)
+            ->assertJsonPath('data.is_payment_verified', false);
     }
 
     public function test_checkout_is_blocked_when_prepayment_is_required_and_unpaid(): void
@@ -209,13 +174,64 @@ class PaymentTest extends TenantTestCase
         $this->assertDatabaseHas('loans', ['id' => $loan->getKey(), 'status' => Loan::STATUS_APPROVED]);
     }
 
-    public function test_checkout_proceeds_when_prepayment_is_required_and_paid(): void
+    public function test_checkout_waits_until_admin_verifies_the_funds(): void
+    {
+        ['loan' => $loan, 'customer' => $customer, 'operator' => $operator, 'asset' => $asset, 'provider' => $provider] = $this->approvedBooking();
+
+        $this->policy(['require_prepayment' => true], Organization::query()->findOrFail($provider->getKey()));
+
+        $this->actingAs($customer)
+            ->postJson('/api/providers/'.$provider->slug.'/bookings/'.$loan->getKey().'/payment', [
+                'payment_method' => Payment::METHOD_WALLET,
+            ])
+            ->assertCreated();
+
+        // Lunas, tapi dana belum diverifikasi: serah terima tetap ditahan.
+        $this->actingAs($operator)
+            ->postJson('/api/loans/'.$loan->getKey().'/checkout', $this->items($asset))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['items']);
+
+        $payment = Payment::query()->withoutOrganizationScope()->firstOrFail();
+
+        // Staf penyedia memverifikasi dana dari halaman peminjaman.
+        $this->actingAs($this->userIn($provider, Membership::ROLE_ADMIN))
+            ->postJson('/api/payments/'.$payment->getKey().'/verify')
+            ->assertOk()
+            ->assertJsonPath('data.is_verified', true);
+
+        $this->actingAs($operator)
+            ->postJson('/api/loans/'.$loan->getKey().'/checkout', $this->items($asset))
+            ->assertOk()
+            ->assertJsonPath('data.status', Loan::STATUS_CHECKED_OUT);
+    }
+
+    public function test_borrower_cannot_verify_the_funds(): void
+    {
+        ['loan' => $loan, 'customer' => $customer, 'provider' => $provider] = $this->approvedBooking();
+
+        $this->actingAs($customer)
+            ->postJson('/api/providers/'.$provider->slug.'/bookings/'.$loan->getKey().'/payment', [
+                'payment_method' => Payment::METHOD_WALLET,
+            ])
+            ->assertCreated();
+
+        $payment = Payment::query()->withoutOrganizationScope()->firstOrFail();
+
+        $this->actingAs($this->userIn($provider, Membership::ROLE_BORROWER))
+            ->postJson('/api/payments/'.$payment->getKey().'/verify')
+            ->assertForbidden();
+
+        $this->assertNull($payment->fresh()->verified_at);
+    }
+
+    public function test_checkout_proceeds_when_the_funds_are_verified(): void
     {
         ['loan' => $loan, 'operator' => $operator, 'asset' => $asset] = $this->approvedBooking();
 
         $this->policy(['require_prepayment' => true], Organization::query()->findOrFail($loan->organization_id));
 
-        Payment::factory()->paid()->create([
+        Payment::factory()->paid()->verified()->create([
             'organization_id' => $loan->organization_id,
             'loan_id' => $loan->getKey(),
         ]);
@@ -256,7 +272,6 @@ class PaymentTest extends TenantTestCase
 
     public function test_customer_sees_payment_status_in_history(): void
     {
-        $this->configureMidtrans();
         ['loan' => $loan, 'customer' => $customer, 'provider' => $provider] = $this->approvedBooking();
 
         $this->actingAs($customer)->getJson('/api/bookings')
@@ -265,38 +280,40 @@ class PaymentTest extends TenantTestCase
             ->assertJsonPath('data.0.can_pay', true);
 
         $this->actingAs($customer)
-            ->postJson('/api/providers/'.$provider->slug.'/bookings/'.$loan->getKey().'/payment')
+            ->postJson('/api/providers/'.$provider->slug.'/bookings/'.$loan->getKey().'/payment', [
+                'payment_method' => Payment::METHOD_WALLET,
+            ])
             ->assertCreated();
 
         $this->actingAs($customer)->getJson('/api/bookings')
             ->assertOk()
-            ->assertJsonPath('data.0.payment.status', Payment::STATUS_PENDING)
-            ->assertJsonPath('data.0.payment.status_label', 'Menunggu pembayaran')
-            ->assertJsonPath('data.0.can_pay', true);
+            ->assertJsonPath('data.0.payment.status', Payment::STATUS_PAID)
+            ->assertJsonPath('data.0.payment.is_verified', false)
+            ->assertJsonPath('data.0.can_pay', false);
     }
 
     public function test_provider_sees_payment_status_on_the_loan(): void
     {
-        $this->configureMidtrans();
         ['loan' => $loan, 'customer' => $customer, 'operator' => $operator, 'provider' => $provider] = $this->approvedBooking();
 
         $this->actingAs($customer)
-            ->postJson('/api/providers/'.$provider->slug.'/bookings/'.$loan->getKey().'/payment')
+            ->postJson('/api/providers/'.$provider->slug.'/bookings/'.$loan->getKey().'/payment', [
+                'payment_method' => Payment::METHOD_WALLET,
+            ])
             ->assertCreated();
 
         $this->actingAs($operator)
             ->getJson('/api/loans/'.$loan->getKey())
             ->assertOk()
-            ->assertJsonPath('data.payment_status', Payment::STATUS_PENDING)
-            ->assertJsonPath('data.is_paid', false);
+            ->assertJsonPath('data.payment_status', Payment::STATUS_PAID)
+            ->assertJsonPath('data.is_paid', true)
+            ->assertJsonPath('data.is_payment_verified', false);
     }
 
     public function test_wallet_payment_deducts_the_balance_and_marks_the_booking_paid(): void
     {
         Http::fake();
         ['loan' => $loan, 'customer' => $customer, 'provider' => $provider] = $this->approvedBooking();
-
-        $customer->update(['wallet_balance' => 200000]);
 
         $this->actingAs($customer)
             ->postJson(
@@ -319,6 +336,7 @@ class PaymentTest extends TenantTestCase
         $payment = Payment::query()->withoutOrganizationScope()->firstOrFail();
         $this->assertNotNull($payment->wallet_transaction_id);
         $this->assertSame('150000.00', $payment->amount);
+        $this->assertNull($payment->verified_at);
 
         // Saldo lokal, jadi tidak ada panggilan ke Midtrans.
         Http::assertNothingSent();
@@ -327,9 +345,7 @@ class PaymentTest extends TenantTestCase
     public function test_wallet_payment_is_refused_when_the_balance_is_not_enough(): void
     {
         Http::fake();
-        ['loan' => $loan, 'customer' => $customer, 'provider' => $provider] = $this->approvedBooking();
-
-        $customer->update(['wallet_balance' => 10000]);
+        ['loan' => $loan, 'customer' => $customer, 'provider' => $provider] = $this->approvedBooking('150000.00', 10000);
 
         $this->actingAs($customer)
             ->postJson(
@@ -348,8 +364,6 @@ class PaymentTest extends TenantTestCase
     {
         Http::fake();
         ['loan' => $loan, 'customer' => $customer, 'provider' => $provider] = $this->approvedBooking();
-
-        $customer->update(['wallet_balance' => 200000]);
 
         $this->actingAs($customer)
             ->postJson(
@@ -386,7 +400,6 @@ class PaymentTest extends TenantTestCase
 
     public function test_unknown_payment_method_is_rejected(): void
     {
-        $this->configureMidtrans();
         ['loan' => $loan, 'customer' => $customer, 'provider' => $provider] = $this->approvedBooking();
 
         $this->actingAs($customer)
@@ -398,7 +411,6 @@ class PaymentTest extends TenantTestCase
             ->assertJsonValidationErrors(['payment_method']);
 
         $this->assertDatabaseCount('payments', 0);
-        Http::assertNothingSent();
     }
 
     /**

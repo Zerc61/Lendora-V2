@@ -241,8 +241,8 @@ onMounted(() => {
         <p class="index-label">PERLU DIBAYAR</p>
         <h2 id="bayar-title" class="dash__title">Bayar dulu, lalu aset diserahkan.</h2>
         <p class="text-2" style="margin: 0.25rem 0 0">
-          Pesanan ini sudah disetujui operator. Bayar dengan saldo dompet (atau Midtrans) di halaman
-          Booking saya; serah terima berjalan setelah pembayaran lunas.
+          Pesanan ini sudah disetujui operator. Bayar dengan saldo dompet di halaman detail
+          peminjaman; serah terima berjalan setelah dana diverifikasi admin.
         </p>
       </div>
 
@@ -260,7 +260,11 @@ onMounted(() => {
                 <template v-if="loan.ends_at"> · sampai {{ fmtDateTime(loan.ends_at) }}</template>
               </p>
             </div>
-            <RouterLink :to="{ name: 'bookings' }" class="btn btn--primary">Bayar</RouterLink>
+            <RouterLink
+              :to="{ name: 'loan-detail', params: { id: loan.id } }"
+              class="btn btn--primary"
+              >Bayar</RouterLink
+            >
           </div>
         </li>
       </ul>

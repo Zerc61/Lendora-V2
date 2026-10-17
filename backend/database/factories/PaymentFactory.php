@@ -41,4 +41,11 @@ class PaymentFactory extends Factory
             'paid_at' => now(),
         ]);
     }
+
+    public function verified(): static
+    {
+        return $this->state(fn (): array => [
+            'verified_at' => now(),
+        ]);
+    }
 }

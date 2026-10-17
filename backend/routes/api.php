@@ -112,6 +112,8 @@ Route::middleware('auth')->group(function () {
         // Dompet melekat pada akun, bukan organisasi: pengawasannya ikut di sini.
         Route::get('/wallet-transactions', [PlatformWalletController::class, 'index']);
         Route::get('/finance', [PlatformFinanceController::class, 'index']);
+        Route::post('/finance/payments/{payment}/verify', [PlatformFinanceController::class, 'verify'])
+            ->whereNumber('payment');
     });
 
     // Pemesanan oleh customer. Customer cukup punya akun, tidak perlu membership
@@ -177,6 +179,16 @@ Route::middleware('auth')->group(function () {
             Route::post('/loans/{loan}/approve', [LoanController::class, 'approve']);
             Route::post('/loans/{loan}/reject', [LoanController::class, 'reject']);
             Route::post('/loans/{loan}/cancel', [LoanController::class, 'cancel']);
+
+            // Bayar sewa dari dalam aplikasi (penyewa yang punya membership).
+            // Hanya saldo dompet; Midtrans hanya untuk isi saldo.
+            Route::post('/loans/{loan}/payment', [PaymentController::class, 'store'])
+                ->whereNumber('loan')
+                ->middleware('throttle:payment-attempts');
+
+            // Verifikasi dana oleh admin/operator: gerbang serah terima kedua.
+            Route::post('/payments/{payment}/verify', [PaymentController::class, 'verify'])
+                ->whereNumber('payment');
 
             // Fase 7, Operations. Serah terima, pengembalian, inspeksi.
             Route::post('/loans/{loan}/checkout', [LoanController::class, 'checkout']);

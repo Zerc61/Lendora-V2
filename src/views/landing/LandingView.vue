@@ -73,7 +73,7 @@ const capabilities = [
     copy: 'Penyewa mengajukan periode. Penyedia meninjau, lalu kedua pihak mengikuti status sampai alat kembali.',
     details: [
       'Penyedia menyetujui atau menolak dengan alasan',
-      'Pembayaran lewat Midtrans saat kebijakan penyedia memintanya',
+      'Pembayaran dengan saldo dompet saat penyedia meminta bayar di muka',
       'Timeline menunjukkan status dan langkah berikutnya',
     ],
     audience: 'PENYEWA & PENYEDIA',

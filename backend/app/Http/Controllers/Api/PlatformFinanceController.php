@@ -8,6 +8,8 @@ use App\Http\Resources\PaymentResource;
 use App\Models\Loan;
 use App\Models\Payment;
 use App\Models\WalletTransaction;
+use App\Services\Audit\AuditRecorder;
+use App\Services\Payments\PaymentService;
 use Illuminate\Http\Request;
 
 /**
@@ -33,6 +35,9 @@ class PlatformFinanceController extends Controller
                 ->sum('amount'),
             'unpaid_total' => (float) $this->unpaidQuery()->sum('subtotal'),
             'unpaid_count' => (int) $this->unpaidQuery()->count(),
+            // Lunas tapi belum diverifikasi admin: antrean verifikasi dana.
+            'unverified_total' => (float) $this->unverifiedQuery()->sum('amount'),
+            'unverified_count' => (int) $this->unverifiedQuery()->count(),
         ];
 
         $paymentsPage = Payment::query()
@@ -60,6 +65,21 @@ class PlatformFinanceController extends Controller
     }
 
     /**
+     * Verifikasi dana masuk oleh admin platform. Pembayaran lunas belum boleh
+     * diserahkan sebelum baris ini diverifikasi.
+     */
+    public function verify(Request $request, int $payment, PaymentService $payments, AuditRecorder $audit): PaymentResource
+    {
+        abort_unless($request->user()?->isPlatformAdmin() === true, 403);
+
+        $model = Payment::query()->withoutOrganizationScope()->findOrFail($payment);
+
+        return new PaymentResource(
+            $payments->verify($model, $request->user(), $audit)->load('loan.borrower'),
+        );
+    }
+
+    /**
      * @return array<string, int>
      */
     private function pageMeta($page): array
@@ -82,5 +102,16 @@ class PlatformFinanceController extends Controller
             ->withoutOrganizationScope()->where('status', Loan::STATUS_APPROVED)
             ->where('subtotal', '>', 0)
             ->whereRaw('not exists (select 1 from payments where payments.loan_id = loans.id and payments.status = ?)', [Payment::STATUS_PAID]);
+    }
+
+    /**
+     * Pembayaran lunas yang dananya belum diverifikasi admin.
+     */
+    private function unverifiedQuery()
+    {
+        return Payment::query()
+            ->withoutOrganizationScope()
+            ->where('status', Payment::STATUS_PAID)
+            ->whereNull('verified_at');
     }
 }

@@ -5,20 +5,24 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\PaymentResource;
 use App\Models\Loan;
+use App\Models\Membership;
 use App\Models\Payment;
 use App\Services\Audit\AuditRecorder;
 use App\Services\Payments\PaymentService;
+use App\Support\Tenancy\OrganizationContext;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 /**
- * Pembayaran booking oleh customer (Tahap 4).
+ * Pembayaran sewa oleh penyewa (Tahap 4).
  *
- * Berada di luar konteks tenant, sama seperti pemesanan: customer tidak punya
- * membership, konteks provider diisi ResolveProviderContext. Loan diambil lewat
- * scope tenant itu, jadi booking provider lain tidak terlihat.
+ * Dipakai dari dua tempat: situs publik (`/providers/{provider}/bookings/{loan}`
+ * dengan ResolveProviderContext, untuk pemesan tanpa membership) dan aplikasi
+ * (`/loans/{loan}/payment` dengan konteks organisasi, dipakai halaman detail
+ * peminjaman). Keduanya memakai policy `view` pada loan, jadi pemesan lain
+ * tidak bisa membayar.
  *
- * payment_method: 'midtrans' (default) atau 'wallet'.
+ * Hanya saldo dompet: penyewa mengisi dompet dulu, baru membayar sewa. Midtrans
+ * tetap dipakai untuk isi saldo, bukan untuk membayar sewa.
  */
 class PaymentController extends Controller
 {
@@ -31,20 +35,33 @@ class PaymentController extends Controller
 
         $this->authorize('view', $model);
 
-        $validated = $request->validate([
-            'payment_method' => [
-                'sometimes',
-                'string',
-                Rule::in([Payment::METHOD_MIDTRANS, Payment::METHOD_WALLET]),
-            ],
+        $request->validate([
+            'payment_method' => ['sometimes', 'string', 'in:'.Payment::METHOD_WALLET],
         ]);
 
-        $method = $validated['payment_method'] ?? Payment::METHOD_MIDTRANS;
+        return new PaymentResource($service->chargeWithWallet($model, $request->user(), $audit));
+    }
 
-        if ($method === Payment::METHOD_WALLET) {
-            return new PaymentResource($service->chargeWithWallet($model, $request->user(), $audit));
-        }
+    /**
+     * Verifikasi dana dari sisi penyedia (tombol di halaman peminjaman).
+     *
+     * Pembayaran lunas belum boleh diserahkan sebelum staf memastikan uangnya
+     * masuk. Pembayaran diambil lewat scope tenant, jadi organisasi lain tidak
+     * terlihat.
+     */
+    public function verify(
+        Request $request,
+        PaymentService $service,
+        AuditRecorder $audit,
+        OrganizationContext $context,
+    ): PaymentResource {
+        abort_unless(
+            $context->hasRole(Membership::ROLE_ADMIN, Membership::ROLE_OPERATOR),
+            403,
+        );
 
-        return new PaymentResource($service->charge($model, $request->user(), $audit));
+        $model = Payment::query()->findOrFail((int) $request->route('payment'));
+
+        return new PaymentResource($service->verify($model, $request->user(), $audit));
     }
 }

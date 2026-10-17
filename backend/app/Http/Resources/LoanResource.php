@@ -55,6 +55,13 @@ class LoanResource extends JsonResource
             'is_paid' => $this->resource->relationLoaded('latestPayment')
                 ? (bool) $this->latestPayment?->isPaid()
                 : null,
+            // Dana sudah diperiksa admin (uang masuk), gerbang serah terima.
+            'is_payment_verified' => $this->resource->relationLoaded('latestPayment')
+                ? (bool) $this->latestPayment?->isVerified()
+                : null,
+            'payment_verified_at' => $this->whenLoaded('latestPayment', fn (): ?string => $this->latestPayment?->verified_at?->toIso8601String()),
+            // Dipakai tombol "Verifikasi dana" di halaman peminjaman.
+            'payment_id' => $this->whenLoaded('latestPayment', fn (): ?int => $this->latestPayment?->getKey()),
             'borrower' => new UserResource($this->whenLoaded('borrower')),
             'items' => LoanItemResource::collection($this->whenLoaded('items')),
             'condition_records' => AssetConditionRecordResource::collection($this->whenLoaded('conditionRecords')),

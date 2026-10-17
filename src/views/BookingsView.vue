@@ -32,7 +32,6 @@ const currentPage = ref(1)
 const cancelTarget = ref(null)
 const cancelBusy = ref(false)
 const cancelError = ref(null)
-const payPendingId = ref(null)
 const payError = ref(null)
 const walletBalance = ref(null)
 const walletPendingId = ref(null)
@@ -89,39 +88,8 @@ function askCancel(booking) {
 }
 
 /*
- * Pembayaran dibuat server: nominal diambil dari snapshot harga, bukan dari
- * browser. Yang dikembalikan server hanya tautan pembayaran Midtrans.
- */
-async function pay(booking) {
-  if (!booking?.provider?.slug) {
-    return
-  }
-
-  payPendingId.value = booking.id
-  payError.value = null
-
-  try {
-    const payment = await apiPost(
-      `/providers/${booking.provider.slug}/bookings/${booking.id}/payment`,
-      {},
-    )
-
-    if (payment?.data?.redirect_url) {
-      window.location.assign(payment.data.redirect_url)
-      return
-    }
-
-    payError.value = 'Tautan pembayaran tidak tersedia. Coba lagi.'
-  } catch (e) {
-    payError.value = e instanceof ApiError ? e.message : 'Pembayaran gagal dimulai.'
-  } finally {
-    payPendingId.value = null
-  }
-}
-
-/*
  * Saldo dompet hanya untuk menampilkan pilihan pembayaran saldo. Kalau gagal
- * dimuat, tombolnya tidak muncul dan pembayaran Midtrans tetap berjalan.
+ * dimuat, tombolnya tidak muncul dan status pembayaran tetap terlihat.
  */
 async function loadWalletBalance() {
   try {
@@ -139,7 +107,8 @@ function canUseWallet(booking) {
 
 /*
  * Bayar dengan saldo: server memotong saldo atomik dan menandai booking lunas,
- * jadi tidak ada halaman pembayaran yang dibuka.
+ * jadi tidak ada halaman pembayaran yang dibuka. Midtrans tidak dipakai untuk
+ * membayar sewa — isi saldo dulu di menu Dompet.
  */
 async function payWithWallet(booking) {
   if (!booking?.provider?.slug) {
@@ -249,8 +218,8 @@ onMounted(async () => {
                 v-else-if="booking.status === 'approved' && !booking.payment"
                 class="bookings__hint"
               >
-                Booking sudah disetujui. Bayar dulu — setelah lunas, operator akan menyerahkan
-                asetmu sesuai jadwal pengambilan.
+                Booking sudah disetujui. Bayar dengan saldo dompet — setelah admin memverifikasi
+                dana masuk, aset diserahkan sesuai jadwal pengambilan.
               </p>
 
               <ul v-if="booking.items?.length" class="bookings__lines">
@@ -285,31 +254,22 @@ onMounted(async () => {
                 v-if="booking.payment?.status === 'paid' && booking.status === 'approved'"
                 class="bookings__hint"
               >
-                Pembayaran diterima — tunggu operator untuk serah terima.
+                <template v-if="booking.payment.is_verified">
+                  Dana sudah diverifikasi admin — aset diserahkan sesuai jadwal pengambilan.
+                </template>
+                <template v-else>
+                  Pembayaranmu sudah masuk. Menunggu verifikasi admin sebelum aset diserahkan.
+                </template>
               </p>
 
               <button
                 v-if="booking.can_pay && walletBalance !== null"
                 type="button"
                 class="btn btn--primary bookings__pay"
-                :disabled="
-                  walletPendingId === booking.id ||
-                  payPendingId === booking.id ||
-                  !canUseWallet(booking)
-                "
+                :disabled="walletPendingId === booking.id || !canUseWallet(booking)"
                 @click="payWithWallet(booking)"
               >
                 {{ walletPendingId === booking.id ? 'Memotong saldo…' : 'Bayar dengan saldo' }}
-              </button>
-
-              <button
-                v-if="booking.can_pay"
-                type="button"
-                class="btn btn--ghost bookings__pay"
-                :disabled="payPendingId === booking.id"
-                @click="pay(booking)"
-              >
-                {{ payPendingId === booking.id ? 'Menyiapkan…' : 'Bayar via Midtrans' }}
               </button>
 
               <p

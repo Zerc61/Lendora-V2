@@ -9,10 +9,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Pembayaran booking lewat Midtrans (Tahap 4, rencana Bagian 6.4).
+ * Pembayaran sewa (Tahap 4, rencana Bagian 6.4).
  *
- * Satu baris per percobaan bayar, dengan `order_id` Midtrans sendiri. `status`
- * hidup di sumbu pembayaran dan tidak mengubah status loan (keputusan 4).
+ * Satu baris per percobaan bayar. `status` hidup di sumbu pembayaran dan tidak
+ * mengubah status loan (keputusan 4). Pembayaran saldo dompet langsung `paid`,
+ * tetapi `verified_at` terisi baru setelah admin memastikan uangnya masuk.
  */
 class Payment extends Model
 {
@@ -49,6 +50,8 @@ class Payment extends Model
         'status',
         'expires_at',
         'paid_at',
+        'verified_at',
+        'verified_by',
         'payload',
         'payment_method',
         'wallet_transaction_id',
@@ -60,6 +63,7 @@ class Payment extends Model
             'amount' => 'decimal:2',
             'expires_at' => 'datetime',
             'paid_at' => 'datetime',
+            'verified_at' => 'datetime',
             'payload' => 'array',
         ];
     }
@@ -74,8 +78,19 @@ class Payment extends Model
         return $this->belongsTo(WalletTransaction::class);
     }
 
+    public function verifier(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'verified_by');
+    }
+
     public function isPaid(): bool
     {
         return $this->status === self::STATUS_PAID;
+    }
+
+    /** Dana sudah diperiksa admin (uang masuk) dan boleh diserahkan. */
+    public function isVerified(): bool
+    {
+        return $this->isPaid() && $this->verified_at !== null;
     }
 }

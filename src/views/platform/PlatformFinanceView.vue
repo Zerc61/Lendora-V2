@@ -3,12 +3,13 @@
  * Menu Keuangan konsol platform.
  *
  * Buku besar uang lintas organisasi: pembayaran sewa yang masuk, sewa yang
- * disetujui tapi belum dibayar, dan pengembalian dana ke dompet. Halaman ini
- * hanya membaca — pengembalian dana hanya dijalankan pembatalan booking di
- * sisi service, jadi tidak ada tombol aksi di sini.
+ * disetujui tapi belum dibayar, dan pengembalian dana ke dompet. Satu tindakan:
+ * verifikasi dana untuk pembayaran yang sudah lunas — serah terima di sisi
+ * penyedia menunggu verifikasi ini.
  */
 import { computed, nextTick, onMounted, ref } from 'vue'
-import { apiGet, ApiError } from '../../lib/http'
+import { apiGet, apiPost, ApiError } from '../../lib/http'
+import { toast } from '../../lib/toast'
 import { fmtDateTime, fmtPrice, PAYMENT_TONES, WALLET_TONES } from '../../lib/format'
 import { usePageMotion } from '../../lib/motion'
 import PageHead from '../../components/ui/PageHead.vue'
@@ -30,6 +31,8 @@ const loading = ref(false)
 const error = ref(null)
 const refundsLoading = ref(false)
 const refundsError = ref(null)
+const verifyBusyId = ref(null)
+const verifyError = ref(null)
 
 const page = ref(null)
 
@@ -48,6 +51,11 @@ const summaryCards = computed(() => {
       label: 'Belum dibayar',
       value: summary.value.unpaid_total,
       sub: `${summary.value.unpaid_count} sewa disetujui`,
+    },
+    {
+      label: 'Menunggu verifikasi',
+      value: summary.value.unverified_total,
+      sub: `${summary.value.unverified_count} dana belum dipastikan`,
     },
     { label: 'Pengembalian dana', value: summary.value.refund_total, sub: 'kembali ke dompet' },
   ]
@@ -115,6 +123,26 @@ async function goToRefunds(pageNumber) {
   await revealRows()
 }
 
+/*
+ * Verifikasi dana: admin memastikan uangnya benar masuk sebelum aset boleh
+ * diserahkan. Server hanya menerima pembayaran yang sudah lunas.
+ */
+async function verify(item) {
+  verifyBusyId.value = item.id
+  verifyError.value = null
+
+  try {
+    await apiPost(`/platform/finance/payments/${item.id}/verify`, {})
+    await load()
+    await revealRows()
+    toast.ok('Dana diverifikasi.')
+  } catch (e) {
+    verifyError.value = e instanceof ApiError ? e.message : 'Verifikasi dana gagal.'
+  } finally {
+    verifyBusyId.value = null
+  }
+}
+
 onMounted(async () => {
   await load()
   await revealRows()
@@ -126,7 +154,7 @@ onMounted(async () => {
     <PageHead
       label="KEUANGAN"
       title="Buku besar uang"
-      lede="Uang sewa yang masuk, sewa yang belum dibayar, dan pengembalian dana ke dompet — lintas organisasi. Pengembalian dana hanya berjalan otomatis saat booking disetujui-admin lalu dibatalkan."
+      lede="Uang sewa yang masuk, sewa yang belum dibayar, dan pengembalian dana ke dompet — lintas organisasi. Verifikasi dana pada pembayaran lunas supaya penyedia boleh menyerahkan aset."
     />
 
     <LoadingState v-if="loading" label="Memuat keuangan" />
@@ -150,6 +178,8 @@ onMounted(async () => {
       <section class="block" aria-label="Pembayaran sewa">
         <h2 class="block__title index-label">PEMBAYARAN SEWA</h2>
 
+        <p v-if="verifyError" class="form-error" role="alert">{{ verifyError }}</p>
+
         <ul v-if="payments.length" class="roster" aria-label="Pembayaran sewa masuk">
           <li v-for="item in payments" :key="item.id" class="row">
             <div class="row__id">
@@ -165,9 +195,25 @@ onMounted(async () => {
               </p>
             </div>
             <span class="row__amount num">{{ fmtPrice(item.amount) }}</span>
-            <StatusBadge :tone="PAYMENT_TONES[item.status] ?? 'neutral'">
-              {{ item.status_label }}
-            </StatusBadge>
+            <div class="row__actions">
+              <StatusBadge :tone="PAYMENT_TONES[item.status] ?? 'neutral'">
+                {{ item.status_label }}
+              </StatusBadge>
+              <template v-if="item.status === 'paid'">
+                <StatusBadge :tone="item.is_verified ? 'ok' : 'warn'">
+                  {{ item.is_verified ? 'Dana terverifikasi' : 'Menunggu verifikasi' }}
+                </StatusBadge>
+                <button
+                  v-if="!item.is_verified"
+                  type="button"
+                  class="btn btn--primary row__verify"
+                  :disabled="verifyBusyId === item.id"
+                  @click="verify(item)"
+                >
+                  {{ verifyBusyId === item.id ? 'Memverifikasi…' : 'Verifikasi dana' }}
+                </button>
+              </template>
+            </div>
           </li>
         </ul>
 
@@ -372,6 +418,18 @@ onMounted(async () => {
 
 .row__amount--in {
   color: var(--ln-ok, var(--color-success, inherit));
+}
+
+.row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.row__verify {
+  font-size: var(--ln-micro);
+  padding: 0.35rem 0.7rem;
 }
 
 @media (max-width: 40rem) {

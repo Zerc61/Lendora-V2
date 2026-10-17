@@ -42,6 +42,14 @@ const cancelReason = ref('')
 const cancelSending = ref(false)
 const cancelError = ref(null)
 
+const walletBalance = ref(null)
+const payOpen = ref(false)
+const paySending = ref(false)
+const payError = ref(null)
+const verifyOpen = ref(false)
+const verifySending = ref(false)
+const verifyError = ref(null)
+
 const page = ref(null)
 const motion = usePageMotion(page)
 
@@ -66,6 +74,51 @@ const canCheckout = computed(
 )
 const canCheckin = computed(() => isManagement.value && loan.value?.status === 'checked_out')
 
+/* Penyewa sendiri yang membayar: operator tidak membayar untuk peminjam. */
+const canPay = computed(
+  () =>
+    isOwner.value &&
+    loan.value?.status === 'approved' &&
+    !loan.value?.is_paid &&
+    Number(loan.value?.subtotal ?? 0) > 0,
+)
+const showPayment = computed(
+  () =>
+    Number(loan.value?.subtotal ?? 0) > 0 &&
+    !['rejected', 'cancelled', 'expired'].includes(loan.value?.status),
+)
+const walletEnough = computed(
+  () =>
+    walletBalance.value !== null &&
+    Number(loan.value?.subtotal ?? 0) <= Number(walletBalance.value),
+)
+const paymentLabel = computed(() => {
+  if (!loan.value) {
+    return ''
+  }
+  if (!loan.value.is_paid) {
+    return loan.value.payment_status_label ?? 'Belum dibayar'
+  }
+  return loan.value.is_payment_verified
+    ? 'Dibayar, dana terverifikasi'
+    : 'Dibayar, menunggu verifikasi admin'
+})
+const paymentTone = computed(() => {
+  if (!loan.value?.is_paid) {
+    return 'warn'
+  }
+  return loan.value.is_payment_verified ? 'ok' : 'warn'
+})
+
+/* Staf yang memastikan uang masuk: admin/operator penyedia, bukan penyewa. */
+const canVerifyPayment = computed(
+  () =>
+    isManagement.value &&
+    loan.value?.is_paid === true &&
+    loan.value?.is_payment_verified === false &&
+    loan.value?.payment_id != null,
+)
+
 async function load() {
   loading.value = true
   error.value = null
@@ -78,8 +131,20 @@ async function load() {
   }
 }
 
+async function loadWalletBalance() {
+  try {
+    const payload = await apiGet('/wallet/balance')
+    walletBalance.value = payload.data.wallet_balance
+  } catch {
+    walletBalance.value = null
+  }
+}
+
 onMounted(async () => {
   await load()
+  if (isOwner.value) {
+    await loadWalletBalance()
+  }
   await nextTick()
   motion.reveal('.block', { stagger: 0.08 })
   motion.scrubProgress('.flow__rail-fill', '.flow', { start: 'top 78%', end: 'bottom 62%' })
@@ -130,6 +195,48 @@ async function cancel() {
     cancelError.value = e instanceof ApiError ? e.message : 'Gagal membatalkan peminjaman.'
   } finally {
     cancelSending.value = false
+  }
+}
+
+/*
+ * Bayar sewa dengan saldo dompet. Nominal ditentukan server dari snapshot harga
+ * di loan; yang dikirim hanya pilihan metode. Midtrans tidak dipakai di sini —
+ * isi saldo dulu di menu Dompet.
+ */
+async function pay() {
+  paySending.value = true
+  payError.value = null
+
+  try {
+    await apiPost(`/loans/${id}/payment`, { payment_method: 'wallet' })
+    payOpen.value = false
+    await load()
+    await loadWalletBalance()
+    toast.ok('Pembayaran saldo berhasil. Menunggu verifikasi admin.')
+  } catch (e) {
+    payError.value = e instanceof ApiError ? e.message : 'Pembayaran saldo gagal.'
+  } finally {
+    paySending.value = false
+  }
+}
+
+/*
+ * Verifikasi dana oleh staf: setelah ini serah terima boleh jalan. Tanpa
+ * verifikasi, tombol ambil di halaman ini ditahan server.
+ */
+async function verifyPayment() {
+  verifySending.value = true
+  verifyError.value = null
+
+  try {
+    await apiPost(`/payments/${loan.value.payment_id}/verify`, {})
+    verifyOpen.value = false
+    await load()
+    toast.ok('Dana diverifikasi. Serah terima sudah bisa dilakukan.')
+  } catch (e) {
+    verifyError.value = e instanceof ApiError ? e.message : 'Verifikasi dana gagal.'
+  } finally {
+    verifySending.value = false
   }
 }
 
@@ -251,14 +358,68 @@ const FLOW_STEPS = computed(() => {
             <template v-if="loan.days">, {{ loan.days }} hari</template>
           </dd>
         </div>
-        <div v-if="loan.payment_status_label">
+        <div>
           <dt>Pembayaran</dt>
-          <dd>
-            {{ loan.payment_status_label }}
-            <template v-if="loan.is_paid">, serah terima boleh</template>
-          </dd>
+          <dd>{{ paymentLabel }}</dd>
         </div>
       </dl>
+
+      <section v-if="showPayment" class="block" aria-labelledby="pay-title">
+        <p class="index-label">PEMBAYARAN</p>
+        <h2 id="pay-title" class="block__title">Tagihan sewa</h2>
+
+        <div class="pay">
+          <div class="pay__head">
+            <span class="pay__amount num">{{ fmtPrice(loan.subtotal) ?? 'Belum ditagih' }}</span>
+            <StatusBadge :tone="paymentTone">{{ paymentLabel }}</StatusBadge>
+          </div>
+
+          <p v-if="canPay" class="pay__hint">
+            Bayar dengan saldo dompet. Setelah dibayar, admin memverifikasi dana yang masuk sebelum
+            aset boleh diserahkan di kantor.
+          </p>
+          <p v-else-if="loan.is_paid && !loan.is_payment_verified" class="pay__hint">
+            Pembayaran sudah masuk. Menunggu verifikasi dana — serah terima menyusul setelah dana
+            dipastikan diterima.
+          </p>
+          <p v-else-if="loan.is_payment_verified" class="pay__hint">
+            Dana sudah diverifikasi. Serah terima bisa dilakukan di kantor sesuai jadwal
+            pengambilan.
+          </p>
+          <p v-else-if="!loan.is_paid && loan.status === 'requested'" class="pay__hint">
+            Tagihan terbit setelah operator menyetujui pengajuan ini.
+          </p>
+
+          <button
+            v-if="canPay"
+            type="button"
+            class="btn btn--primary"
+            :disabled="walletBalance !== null && !walletEnough"
+            @click="payOpen = true"
+          >
+            Bayar dengan saldo
+          </button>
+
+          <p v-if="canPay && walletBalance !== null && !walletEnough" class="pay__hint">
+            Saldo dompet {{ fmtPrice(walletBalance) }} belum cukup.
+            <RouterLink :to="{ name: 'wallet' }" class="link-sweep">Isi saldo dulu</RouterLink>.
+          </p>
+
+          <p v-if="canVerifyPayment" class="pay__hint">
+            Cek dulu dana benar masuk ke rekening, baru verifikasi — serah terima menunggu langkah
+            ini.
+          </p>
+
+          <button
+            v-if="canVerifyPayment"
+            type="button"
+            class="btn btn--primary"
+            @click="verifyOpen = true"
+          >
+            Verifikasi dana masuk
+          </button>
+        </div>
+      </section>
 
       <section class="block" aria-labelledby="flow-title">
         <p class="index-label">ALUR</p>
@@ -391,7 +552,10 @@ const FLOW_STEPS = computed(() => {
         </div>
 
         <p v-if="canCheckout && !loan.is_paid" class="block__hint" role="status">
-          Pembayaran belum lunas — serah terima akan ditahan sampai penyewa membayar di muka.
+          Pembayaran belum lunas — serah terima ditahan sampai penyewa membayar sewa.
+        </p>
+        <p v-else-if="canCheckout && !loan.is_payment_verified" class="block__hint" role="status">
+          Dana belum diverifikasi admin — serah terima ditahan sampai dana dipastikan masuk.
         </p>
 
         <form v-if="rejectOpen" class="mini-form panel--alt" @submit.prevent="reject">
@@ -448,6 +612,28 @@ const FLOW_STEPS = computed(() => {
       :error="approveError"
       @confirm="approve"
       @cancel="approveOpen = false"
+    />
+
+    <ConfirmDialog
+      v-if="payOpen && loan"
+      title="Bayar sewa dengan saldo dompet?"
+      :message="`Saldo dompetmu dipotong ${fmtPrice(loan.subtotal)} untuk sewa ini. Setelah itu admin memverifikasi dana masuk sebelum serah terima.`"
+      confirm-label="Bayar"
+      :busy="paySending"
+      :error="payError"
+      @confirm="pay"
+      @cancel="payOpen = false"
+    />
+
+    <ConfirmDialog
+      v-if="verifyOpen && loan"
+      title="Verifikasi dana masuk?"
+      :message="`Pembayaran ${fmtPrice(loan.subtotal)} untuk peminjaman ini dinyatakan sudah masuk. Setelah diverifikasi, aset boleh diserahkan.`"
+      confirm-label="Verifikasi"
+      :busy="verifySending"
+      :error="verifyError"
+      @confirm="verifyPayment"
+      @cancel="verifyOpen = false"
     />
   </section>
 </template>
@@ -533,6 +719,34 @@ const FLOW_STEPS = computed(() => {
   margin: 0;
   color: var(--ln-text-2);
   font-size: var(--ln-micro);
+}
+
+/* Tagihan sewa: nominal besar, status, lalu tombol bayar. */
+.pay {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+}
+
+.pay__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pay__amount {
+  font-family: var(--ln-font-display);
+  font-size: var(--ln-title);
+  letter-spacing: -0.02em;
+}
+
+.pay__hint {
+  max-width: 60ch;
+  margin: 0;
+  color: var(--ln-text-2);
+  font-size: var(--ln-micro);
+  line-height: 1.5;
 }
 
 /* Garis waktu alur: nomor mono, node, dan rail progres. */

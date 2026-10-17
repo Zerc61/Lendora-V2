@@ -53,6 +53,7 @@ class CustomerBookingResource extends JsonResource
                 'amount' => $this->latestPayment->amount,
                 'expires_at' => $this->latestPayment->expires_at?->toIso8601String(),
                 'paid_at' => $this->latestPayment->paid_at?->toIso8601String(),
+                'is_verified' => $this->latestPayment->isVerified(),
             ],
             // Tombol bayar hanya masuk akal setelah disetujui dan sebelum lunas.
             'can_pay' => $this->status === Loan::STATUS_APPROVED

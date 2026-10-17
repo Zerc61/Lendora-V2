@@ -27,6 +27,8 @@ class PaymentResource extends JsonResource
             'amount' => $this->amount,
             'expires_at' => $this->expires_at,
             'paid_at' => $this->paid_at,
+            'verified_at' => $this->verified_at,
+            'is_verified' => $this->isVerified(),
             'payment_method' => $this->payment_method,
             'redirect_url' => $this->payload['redirect_url'] ?? null,
             // Konteks sewa untuk buku besar Keuangan konsol platform; null di

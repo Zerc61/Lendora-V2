@@ -78,5 +78,82 @@ class PlatformFinanceTest extends TestCase
         $this->assertSame(90000.0, (float) $summary['unpaid_total']);
         $this->assertSame(1, $summary['unpaid_count']);
         $this->assertSame(75000.0, (float) $summary['refund_total']);
+        // Pembayaran lunas itu belum diverifikasi admin → masuk antrean verifikasi.
+        $this->assertSame(150000.0, (float) $summary['unverified_total']);
+        $this->assertSame(1, $summary['unverified_count']);
+    }
+
+    /**
+     * Pembayaran dompet untuk sewa yang sudah disetujui.
+     */
+    private function payment(bool $paid = true): Payment
+    {
+        $provider = Organization::factory()->verified()->create();
+        $loan = Loan::factory()->for($provider)->create([
+            'status' => Loan::STATUS_APPROVED,
+            'subtotal' => '150000.00',
+        ]);
+
+        return Payment::factory()
+            ->when($paid, fn ($factory) => $factory->paid())
+            ->create([
+                'organization_id' => $provider->getKey(),
+                'loan_id' => $loan->getKey(),
+                'payment_method' => Payment::METHOD_WALLET,
+            ]);
+    }
+
+    public function test_non_platform_user_cannot_verify_a_payment(): void
+    {
+        $payment = $this->payment();
+
+        $this->actingAs(User::factory()->create())
+            ->postJson('/api/platform/finance/payments/'.$payment->getKey().'/verify')
+            ->assertForbidden();
+
+        $this->assertNull($payment->fresh()->verified_at);
+    }
+
+    public function test_unpaid_payment_cannot_be_verified(): void
+    {
+        $payment = $this->payment(false);
+
+        $this->actingAs(User::factory()->platformAdmin()->create())
+            ->postJson('/api/platform/finance/payments/'.$payment->getKey().'/verify')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['payment']);
+
+        $this->assertNull($payment->fresh()->verified_at);
+    }
+
+    public function test_platform_admin_verifies_the_funds_once(): void
+    {
+        $admin = User::factory()->platformAdmin()->create();
+        $payment = $this->payment();
+
+        $this->actingAs($admin)
+            ->postJson('/api/platform/finance/payments/'.$payment->getKey().'/verify')
+            ->assertOk()
+            ->assertJsonPath('data.is_verified', true);
+
+        $verified = $payment->fresh();
+        $this->assertNotNull($verified->verified_at);
+        $this->assertSame($admin->getKey(), $verified->verified_by);
+        $this->assertDatabaseHas('audit_events', [
+            'action' => 'payment.verified',
+            'actor_id' => $admin->getKey(),
+            'subject_id' => $payment->getKey(),
+        ]);
+
+        // Verifikasi kedua tidak mengubah jejak maupun menambah audit.
+        $this->actingAs($admin)
+            ->postJson('/api/platform/finance/payments/'.$payment->getKey().'/verify')
+            ->assertOk();
+
+        $this->assertSame(
+            $verified->verified_at->toIso8601String(),
+            $payment->fresh()->verified_at->toIso8601String(),
+        );
+        $this->assertDatabaseCount('audit_events', 1);
     }
 }

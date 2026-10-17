@@ -3,7 +3,6 @@
 namespace App\Services\Payments;
 
 use App\Models\Loan;
-use App\Models\OrganizationPolicy;
 use App\Models\Payment;
 use App\Models\User;
 use App\Models\WalletTransaction;
@@ -25,91 +24,6 @@ class PaymentService
     private const REFUND_STATUSES = ['refund', 'partial_refund', 'chargeback'];
 
     public function __construct(private MidtransClient $client) {}
-
-    /**
-     * Buat charge untuk booking yang sudah disetujui.
-     *
-     * Nominal selalu `subtotal` yang dibekukan saat customer memesan. Deposit
-     * belum ditagih (keputusan 10).
-     */
-    public function charge(Loan $loan, User $actor, AuditRecorder $audit): Payment
-    {
-        if ($loan->status !== Loan::STATUS_APPROVED) {
-            throw ValidationException::withMessages([
-                'payment' => 'Pembayaran hanya bisa dimulai setelah pengajuan disetujui.',
-            ]);
-        }
-
-        if (! $this->client->enabled()) {
-            throw ValidationException::withMessages([
-                'payment' => 'Pembayaran belum dikonfigurasi. Hubungi penyedia.',
-            ]);
-        }
-
-        if ($this->paidFor($loan) !== null) {
-            throw ValidationException::withMessages([
-                'payment' => 'Pembayaran booking ini sudah lunas.',
-            ]);
-        }
-
-        $expiresAt = $loan->pickupDeadline(
-            OrganizationPolicy::resolve($loan->organization_id)->pickup_window_hours,
-        );
-
-        if ($expiresAt === null || $expiresAt->isPast()) {
-            throw ValidationException::withMessages([
-                'payment' => 'Jendela pengambilan sudah lewat. Hubungi penyedia.',
-            ]);
-        }
-
-        $amount = (string) ($loan->subtotal ?? '0.00');
-        $orderId = sprintf('LN-%d-%s', $loan->getKey(), Str::lower((string) Str::ulid()));
-
-        $response = $this->client->charge([
-            'transaction_details' => [
-                'order_id' => $orderId,
-                'gross_amount' => (int) round((float) $amount),
-            ],
-            'customer_details' => [
-                'first_name' => $actor->name,
-                'email' => $actor->email,
-            ],
-            // Batas bayar mengikuti jendela pengambilan, supaya Midtrans tidak
-            // menahan transaksi lebih lama dari jatah waktu pemesanan.
-            'expiry' => [
-                'unit' => 'minutes',
-                'duration' => max(1, (int) now()->diffInMinutes($expiresAt)),
-            ],
-            'callbacks' => [
-                'finish' => (string) config('services.midtrans.finish_url'),
-            ],
-        ]);
-
-        return DB::transaction(function () use ($loan, $orderId, $amount, $expiresAt, $response, $audit): Payment {
-            $payment = Payment::query()->create([
-                'organization_id' => $loan->organization_id,
-                'loan_id' => $loan->getKey(),
-                'order_id' => $orderId,
-                'amount' => $amount,
-                'status' => Payment::STATUS_PENDING,
-                'expires_at' => $expiresAt,
-                'payload' => $response,
-            ]);
-
-            $audit->record(
-                action: 'payment.created',
-                subject: $loan,
-                after: [
-                    'order_id' => $orderId,
-                    'amount' => $amount,
-                    'status' => Payment::STATUS_PENDING,
-                ],
-                organization: $loan->organization,
-            );
-
-            return $payment;
-        });
-    }
 
     /**
      * Buat charge dengan dompet untuk booking yang sudah disetujui.
@@ -182,6 +96,47 @@ class PaymentService
                     'payment_method' => Payment::METHOD_WALLET,
                 ],
                 organization: $loan->organization,
+            );
+
+            return $payment;
+        });
+    }
+
+    /**
+     * Verifikasi dana oleh admin sebelum serah terima.
+     *
+     * Pembayaran dompet langsung `paid` (saldo sudah terpotong), tetapi admin
+     * tetap memastikan uangnya masuk sebelum aset boleh diserahkan. Idempoten:
+     * pemanggilan ulang tidak mengubah apa pun.
+     */
+    public function verify(Payment $payment, User $actor, AuditRecorder $audit): Payment
+    {
+        if (! $payment->isPaid()) {
+            throw ValidationException::withMessages([
+                'payment' => 'Hanya pembayaran lunas yang bisa diverifikasi.',
+            ]);
+        }
+
+        if ($payment->isVerified()) {
+            return $payment;
+        }
+
+        return DB::transaction(function () use ($payment, $actor, $audit): Payment {
+            $payment->forceFill([
+                'verified_at' => now(),
+                'verified_by' => $actor->getKey(),
+            ])->save();
+
+            $audit->record(
+                action: 'payment.verified',
+                subject: $payment,
+                after: [
+                    'order_id' => $payment->order_id,
+                    'amount' => $payment->amount,
+                    'status' => $payment->status,
+                    'verified_at' => $payment->verified_at?->toIso8601String(),
+                ],
+                organization: $payment->organization,
             );
 
             return $payment;

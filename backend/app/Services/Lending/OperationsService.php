@@ -327,7 +327,8 @@ class OperationsService
      *
      * Penjaga service, bukan transisi status: loan tetap `approved` saat lunas,
      * dan provider yang tidak mewajibkan bayar di muka berjalan seperti
-     * sebelumnya.
+     * sebelumnya. Dua tahap: penyewa membayar, lalu admin memverifikasi dana
+     * masuk — serah terima menunggu keduanya.
      */
     private function assertPaymentCleared(Loan $loan): void
     {
@@ -337,13 +338,19 @@ class OperationsService
             return;
         }
 
-        if ($this->payments->paidFor($loan) !== null) {
-            return;
+        $payment = $this->payments->paidFor($loan);
+
+        if ($payment === null) {
+            throw ValidationException::withMessages([
+                'items' => 'Pembayaran belum lunas; serah terima ditahan.',
+            ]);
         }
 
-        throw ValidationException::withMessages([
-            'items' => 'Pembayaran belum lunas; serah terima ditahan.',
-        ]);
+        if (! $payment->isVerified()) {
+            throw ValidationException::withMessages([
+                'items' => 'Dana belum diverifikasi admin; serah terima ditahan.',
+            ]);
+        }
     }
 
     /**

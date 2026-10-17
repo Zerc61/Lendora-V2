@@ -22,6 +22,28 @@ import PageHead from '../components/ui/PageHead.vue'
 
 const isManagement = computed(() => auth.role === 'operator' || auth.role === 'admin')
 
+/*
+ * Label pembayaran satu baris. "Lunas" saja menyesatkan: penyewa harus tahu
+ * dananya masih menunggu verifikasi staf, dan staf harus tahu mana yang bisa
+ * langsung diambil.
+ */
+function paymentLabel(loan) {
+  if (loan.is_paid && loan.is_payment_verified) {
+    return 'Dana terverifikasi'
+  }
+  if (loan.is_paid) {
+    return 'Menunggu verifikasi dana'
+  }
+  return loan.payment_status_label
+}
+
+function paymentTone(loan) {
+  if (loan.is_paid) {
+    return loan.is_payment_verified ? 'ok' : 'warn'
+  }
+  return PAYMENT_TONES[loan.payment_status] ?? 'neutral'
+}
+
 const GROUP_TABS = [
   { value: '', label: 'Semua' },
   { value: 'pending', label: 'Menunggu persetujuan' },
@@ -171,13 +193,10 @@ watch(loading, async (isLoading) => {
                 </StatusBadge>
                 <span v-if="loan.is_overdue" class="tag tag--warn">Terlambat</span>
                 <span v-if="loan.is_awaiting_pickup" class="tag tag--ok"> Siap diambil </span>
-                <!-- Sumbu pembayaran: pengelola perlu tahu booking mana yang
-                     tertahan karena belum dibayar, tanpa membuka satu per satu. -->
-                <StatusBadge
-                  v-if="isManagement && loan.payment_status"
-                  :tone="PAYMENT_TONES[loan.payment_status] ?? 'neutral'"
-                >
-                  {{ loan.payment_status_label }}
+                <!-- Sumbu pembayaran: penyewa dan pengelola sama-sama perlu tahu
+                     booking mana yang tertahan karena bayar atau verifikasi. -->
+                <StatusBadge v-if="loan.payment_status" :tone="paymentTone(loan)">
+                  {{ paymentLabel(loan) }}
                 </StatusBadge>
               </div>
               <h2 class="row__title">{{ itemNames(loan) || 'Pinjaman aset' }}</h2>
