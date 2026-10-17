@@ -63,7 +63,8 @@ class WalletTransactionService
      */
     public function syncWithMidtrans(WalletTransaction $transaction): WalletTransaction
     {
-        $status = $this->client->findStatus((string) $transaction->reference_id);
+        $status = $this->client->findStatus((string) $transaction->reference_id)
+            ?? $this->snapStatus($transaction);
 
         // Midtrans tidak mengenal order ini: bisa jadi order dari lingkungan
         // lain, jadi hanya yang masa berlakunya lewat yang ditutup.
@@ -76,6 +77,29 @@ class WalletTransactionService
         }
 
         return $this->applyStatus($transaction, (string) ($status['transaction_status'] ?? ''), $status);
+    }
+
+    /**
+     * Status dari endpoint Snap (berdasarkan token), bukan Core API.
+     *
+     * Snap sandbox yang lama tidak selalu menautkan transaksinya ke Core API
+     * untuk order yang belum dibayar — 404 "Transaction doesn't exist" — tetapi
+     * Webhook tetap satu-satunya jalur yang membandingkan status pembayaran
+     * sebenarnya ketika transaksi sudah dibayar. Mencari status dari token Snap
+     * jadi jalur cadangan: jawaban tanpa transaksi (`Payment has not been made`)
+     * berarti masih menunggu, bukan hilang.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function snapStatus(WalletTransaction $transaction): ?array
+    {
+        $token = (string) ($transaction->metadata['snap_token'] ?? '');
+
+        if ($token === '') {
+            return null;
+        }
+
+        return $this->client->snapStatus((string) $token);
     }
 
     /**

@@ -134,6 +134,16 @@ class WalletController extends Controller
             ]);
         }
 
+        // Token Snap disimpan: status transaksi Snap juga bisa ditanyakan lewat
+        // token (MidtransCore API sandbox tidak selalu mengenal order Snap yang
+        // belum dibayar, jadi token itu satu-satunya penyedip yang andal).
+        $transaction->update([
+            'metadata' => [
+                'order_id' => $orderId,
+                'snap_token' => $charge['token'] ?? null,
+            ],
+        ]);
+
         return response()->json([
             'data' => [
                 'order_id' => $orderId,

@@ -138,6 +138,34 @@ class MidtransClient
         ];
     }
 
+    /**
+     * Status transaksi Snap berdasarkan token, bukan order id.
+     *
+     * Terutama untuk top up: token disimpan saat charge, dan endpoint Snap
+     * menjawab status pembayaran yang Core API kadang tidak kenal untuk order
+     * yang dibuat lewat Snap sandbox.
+     */
+    public function snapStatus(string $token): ?array
+    {
+        $response = $this->request()->get($this->snapBaseUrl().'/snap/v1/transactions/'.urlencode($token).'/status');
+        $body = $response->json() ?? [];
+
+        // Belum dibayar: Midtrans menjawab { "error_messages": ["Payment has not been made"] }
+        // dengan kode 201. Perlakukan sebagai "belum lunas", bukan galat.
+        if (($body['error_messages'] ?? null) === ['Payment has not been made']) {
+            return [
+                'transaction_status' => 'pending',
+                'gross_amount' => $body['transaction_details']['gross_amount'] ?? null,
+            ];
+        }
+
+        if ($response->failed()) {
+            throw new RuntimeException('Midtrans gagal mengambil status Snap: '.$response->body());
+        }
+
+        return $body;
+    }
+
     private function request(): PendingRequest
     {
         $serverKey = (string) config('services.midtrans.server_key');
