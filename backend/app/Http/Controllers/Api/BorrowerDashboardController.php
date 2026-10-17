@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\LoanResource;
 use App\Models\Loan;
 use App\Models\OrganizationPolicy;
+use App\Models\Payment;
 use App\Support\Tenancy\OrganizationContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -47,9 +48,17 @@ class BorrowerDashboardController extends Controller
                     ->where('approved_at', '>=', $cutoff));
         });
 
+        // Sewa yang sudah disetujui tetapi belum dibayar: di sinilah penyewa
+        // diberi tahu bahwa tagihan sudah menunggu (serah terima ditahan
+        // sampai lunas).
+        $unpaidQuery = fn () => $scope()
+            ->where('status', Loan::STATUS_APPROVED)
+            ->whereRaw('not exists (select 1 from payments where payments.loan_id = loans.id and payments.status = ?)', [Payment::STATUS_PAID]);
+
         $counts = [
             'active' => (clone $activeQuery)->count(),
             'pending' => $scope()->where('status', Loan::STATUS_REQUESTED)->count(),
+            'unpaid' => $unpaidQuery()->count(),
             'due_soon' => $scope()
                 ->where('status', Loan::STATUS_CHECKED_OUT)
                 ->whereNotNull('due_at')
@@ -59,16 +68,22 @@ class BorrowerDashboardController extends Controller
         ];
 
         $active = (clone $activeQuery)
-            ->with(['items.asset', 'borrower'])
+            ->with(['items.asset', 'borrower', 'latestPayment'])
             ->orderByRaw('due_at asc nulls last')
             ->orderBy('starts_at')
             ->limit(5)
             ->get();
 
         $requests = $scope()
-            ->with(['items.asset', 'borrower'])
+            ->with(['items.asset', 'borrower', 'latestPayment'])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
+            ->limit(5)
+            ->get();
+
+        $duePayments = $unpaidQuery()
+            ->with(['items.asset', 'latestPayment'])
+            ->orderBy('starts_at')
             ->limit(5)
             ->get();
 
@@ -78,6 +93,7 @@ class BorrowerDashboardController extends Controller
             'counts' => $counts,
             'active' => LoanResource::collection($active)->resolve(),
             'requests' => LoanResource::collection($requests)->resolve(),
+            'due_payments' => LoanResource::collection($duePayments)->resolve(),
             'activity' => $this->activity($scope),
         ]);
     }

@@ -49,7 +49,12 @@ class LoanResource extends JsonResource
             'payment_status_label' => $this->whenLoaded('latestPayment', fn (): ?string => $this->latestPayment === null
                 ? null
                 : (Payment::STATUS_LABELS[$this->latestPayment->status] ?? $this->latestPayment->status)),
-            'is_paid' => $this->whenLoaded('latestPayment', fn (): bool => (bool) $this->latestPayment?->isPaid()),
+            // `whenLoaded` bawaan mengembalikan null (bukan false) saat relasinya
+            // dimuat tapi kosong, jadi status bayar diperiksa langsung agar
+            // pemanggil selalu menerima boolean yang jelas.
+            'is_paid' => $this->resource->relationLoaded('latestPayment')
+                ? (bool) $this->latestPayment?->isPaid()
+                : null,
             'borrower' => new UserResource($this->whenLoaded('borrower')),
             'items' => LoanItemResource::collection($this->whenLoaded('items')),
             'condition_records' => AssetConditionRecordResource::collection($this->whenLoaded('conditionRecords')),

@@ -4,6 +4,7 @@ namespace Tests\Feature\Borrower;
 
 use App\Models\Loan;
 use App\Models\Membership;
+use App\Models\Payment;
 use App\Models\User;
 use Tests\Support\TenantTestCase;
 
@@ -25,6 +26,34 @@ class BorrowerDashboardTest extends TenantTestCase
     public function test_guest_cannot_read_borrower_overview(): void
     {
         $this->getJson('/api/borrower/overview')->assertUnauthorized();
+    }
+
+    public function test_overview_lists_approved_loans_that_are_not_paid_yet(): void
+    {
+        $borrower = $this->member(Membership::ROLE_BORROWER);
+
+        $unpaid = $this->loanFor($borrower, [
+            'status' => Loan::STATUS_APPROVED,
+            'approved_at' => now()->subHour(),
+            'subtotal' => '90000.00',
+        ]);
+
+        $paid = $this->loanFor($borrower, [
+            'status' => Loan::STATUS_APPROVED,
+            'approved_at' => now()->subHour(),
+            'subtotal' => '50000.00',
+        ]);
+        Payment::factory()->paid()->create([
+            'organization_id' => $this->organization->getKey(),
+            'loan_id' => $paid->getKey(),
+        ]);
+
+        $payload = $this->actingAs($borrower)->getJson('/api/borrower/overview')->assertOk()->json();
+
+        $this->assertSame(1, $payload['counts']['unpaid']);
+        $this->assertCount(1, $payload['due_payments']);
+        $this->assertSame($unpaid->getKey(), $payload['due_payments'][0]['id']);
+        $this->assertFalse($payload['due_payments'][0]['is_paid']);
     }
 
     public function test_overview_counts_only_loans_of_the_logged_in_borrower(): void
@@ -65,7 +94,7 @@ class BorrowerDashboardTest extends TenantTestCase
             ->json();
 
         $this->assertSame(
-            ['active' => 1, 'pending' => 1, 'due_soon' => 1, 'completed' => 1],
+            ['active' => 1, 'pending' => 1, 'unpaid' => 0, 'due_soon' => 1, 'completed' => 1],
             $payload['counts'],
         );
         $this->assertCount(1, $payload['active']);

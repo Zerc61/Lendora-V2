@@ -12,7 +12,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Search } from '@lucide/vue'
 import { apiGet, ApiError } from '../lib/http'
-import { fmtDate, fmtDateTime, LOAN_TONES } from '../lib/format'
+import { fmtDate, fmtDateTime, fmtPrice, LOAN_TONES } from '../lib/format'
 import { usePageMotion } from '../lib/motion'
 import AssetCard from './AssetCard.vue'
 import BorrowerCalendar from './BorrowerCalendar.vue'
@@ -55,6 +55,12 @@ const stats = computed(() => {
       to: { name: 'loans', query: { group: 'pending' } },
     },
     {
+      value: counts.unpaid,
+      label: 'Perlu dibayar',
+      meta: 'SEBELUM DIAMBIL',
+      to: { name: 'bookings' },
+    },
+    {
       value: counts.due_soon,
       label: 'Mendekati tenggat',
       meta: `${overview.value?.due_soon_days ?? 3} HARI KE DEPAN`,
@@ -71,6 +77,7 @@ const stats = computed(() => {
 
 const activeLoans = computed(() => overview.value?.active ?? [])
 const recentRequests = computed(() => overview.value?.requests ?? [])
+const duePayments = computed(() => overview.value?.due_payments ?? [])
 const activity = computed(() => overview.value?.activity ?? [])
 
 function itemNames(loan) {
@@ -226,6 +233,37 @@ onMounted(() => {
           Semua peminjaman aktif
         </RouterLink>
       </p>
+    </section>
+
+    <!-- 04b / PERLU DIBAYAR — tagihan yang menahan serah terima -->
+    <section v-if="duePayments.length" aria-labelledby="bayar-title" class="dash__section">
+      <div class="dash__head">
+        <p class="index-label">PERLU DIBAYAR</p>
+        <h2 id="bayar-title" class="dash__title">Bayar dulu, lalu aset diserahkan.</h2>
+        <p class="text-2" style="margin: 0.25rem 0 0">
+          Pesanan ini sudah disetujui operator. Bayar dengan saldo dompet (atau Midtrans) di halaman
+          Booking saya; serah terima berjalan setelah pembayaran lunas.
+        </p>
+      </div>
+
+      <ul class="dash__list">
+        <li v-for="loan in duePayments" :key="loan.id" class="dash__row">
+          <div class="pay-row">
+            <div class="row__main">
+              <div class="row__top">
+                <StatusBadge tone="warn">Menunggu pembayaran</StatusBadge>
+                <span class="row__count num">{{ fmtPrice(loan.subtotal) }}</span>
+              </div>
+              <h3 class="row__title">{{ itemNames(loan) || 'Pinjaman aset' }}</h3>
+              <p class="row__meta text-2">
+                Ambil {{ fmtDateTime(loan.starts_at) }}
+                <template v-if="loan.ends_at"> · sampai {{ fmtDateTime(loan.ends_at) }}</template>
+              </p>
+            </div>
+            <RouterLink :to="{ name: 'bookings' }" class="btn btn--primary">Bayar</RouterLink>
+          </div>
+        </li>
+      </ul>
     </section>
 
     <!-- 05 / PENGAJUAN TERBARU -->
@@ -492,6 +530,17 @@ onMounted(() => {
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+/* Baris tagihan yang menahan serah terima: tanpa efek hover membalik warna
+   karena ada tombol di dalamnya. */
+.pay-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.125rem 1rem;
+  border-bottom: 1px solid var(--ln-border);
 }
 
 .tag {
