@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\OrganizationController;
 use App\Http\Controllers\Api\OrganizationPolicyController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PlatformAdminController;
+use App\Http\Controllers\Api\PlatformFinanceController;
 use App\Http\Controllers\Api\PlatformWalletController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\PublicCatalogController;
@@ -110,6 +111,7 @@ Route::middleware('auth')->group(function () {
 
         // Dompet melekat pada akun, bukan organisasi: pengawasannya ikut di sini.
         Route::get('/wallet-transactions', [PlatformWalletController::class, 'index']);
+        Route::get('/finance', [PlatformFinanceController::class, 'index']);
     });
 
     // Pemesanan oleh customer. Customer cukup punya akun, tidak perlu membership

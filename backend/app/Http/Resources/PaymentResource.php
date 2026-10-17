@@ -29,6 +29,26 @@ class PaymentResource extends JsonResource
             'paid_at' => $this->paid_at,
             'payment_method' => $this->payment_method,
             'redirect_url' => $this->payload['redirect_url'] ?? null,
+            // Konteks sewa untuk buku besar Keuangan konsol platform; null di
+            // pemakaian lain karena relasinya tidak dimuat.
+            'created_at' => $this->created_at?->toIso8601String(),
+            'loan' => $this->whenLoaded('loan', function () {
+                $loan = $this->loan;
+
+                return [
+                    'id' => $loan->id,
+                    'status' => $loan->status,
+                    'starts_at' => $loan->starts_at?->toIso8601String(),
+                    'ends_at' => $loan->ends_at?->toIso8601String(),
+                    'borrower' => $loan->relationLoaded('borrower') && $loan->borrower !== null ? [
+                        'name' => $loan->borrower->name,
+                        'email' => $loan->borrower->email,
+                    ] : null,
+                    'organization_name' => $loan->relationLoaded('organization') && $loan->organization !== null
+                        ? $loan->organization->name
+                        : null,
+                ];
+            }),
         ];
     }
 }

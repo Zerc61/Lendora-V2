@@ -2,29 +2,25 @@
 
 namespace Tests\Feature\Payments;
 
+use App\Models\User;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
  * Pemeriksaan kesiapan konfigurasi Midtrans (`midtrans:check`).
  *
- * Yang diuji adalah pembacaannya, bukan nilai kuncinya: kunci sandbox di
- * lingkungan production (dan sebaliknya) adalah kesalahan yang paling sering dan
- * hanya muncul sebagai 401 saat charge.
+ * Penilaian tidak menebak dari awalan kunci; command sungguhan menanyakan
+ * Midtrans dengan kunci server. Di sini HTTP Midtrans dipalsukan supaya hasil
+ * probe bisa dipindah-pindah: diterima, ditolak, tidak dapat dihubungi.
  */
 class MidtransCheckCommandTest extends TestCase
 {
-    private function configure(?string $serverKey, ?string $clientKey, bool $production): void
-    {
-        config([
-            'services.midtrans.server_key' => $serverKey,
-            'services.midtrans.client_key' => $clientKey,
-            'services.midtrans.is_production' => $production,
-        ]);
-    }
-
     public function test_it_warns_when_keys_are_missing(): void
     {
-        $this->configure(null, null, false);
+        config([
+            'services.midtrans.server_key' => null,
+            'services.midtrans.client_key' => null,
+        ]);
 
         $this->artisan('midtrans:check')
             ->expectsOutputToContain('belum diisi')
@@ -32,39 +28,41 @@ class MidtransCheckCommandTest extends TestCase
             ->assertExitCode(0);
     }
 
-    public function test_it_flags_a_sandbox_key_in_production_mode(): void
+    public function test_it_reports_accepted_key(): void
     {
-        $this->configure('SB-Mid-server-uji', 'SB-Mid-client-uji', true);
+        $this->actingAs(User::factory()->create());
+        config([
+            'services.midtrans.server_key' => 'kunci-uji',
+            'services.midtrans.client_key' => 'kunci-klien-uji',
+            'services.midtrans.is_production' => false,
+        ]);
+
+        Http::fake([
+            '*/v2/*' => Http::response(['status_code' => '404']),
+        ]);
 
         $this->artisan('midtrans:check')
-            ->expectsOutputToContain('Kunci sandbox dipasang di lingkungan production')
-            ->assertExitCode(1);
-    }
-
-    public function test_it_flags_a_production_key_in_sandbox_mode(): void
-    {
-        $this->configure('Mid-server-uji', 'Mid-client-uji', false);
-
-        $this->artisan('midtrans:check')
-            ->expectsOutputToContain('Kunci production dipasang di lingkungan sandbox')
-            ->assertExitCode(1);
-    }
-
-    public function test_it_flags_mixed_client_and_server_keys(): void
-    {
-        $this->configure('Mid-server-uji', 'SB-Mid-client-uji', true);
-
-        $this->artisan('midtrans:check')
-            ->expectsOutputToContain('berasal dari lingkungan Midtrans yang berbeda')
-            ->assertExitCode(1);
-    }
-
-    public function test_it_accepts_a_matching_pair(): void
-    {
-        $this->configure('SB-Mid-server-uji', 'SB-Mid-client-uji', false);
-
-        $this->artisan('midtrans:check')
-            ->expectsOutputToContain('Konfigurasi Midtrans konsisten')
+            ->expectsOutputToContain('Kunci server diterima Midtrans sandbox')
             ->assertExitCode(0);
+    }
+
+    public function test_it_flags_rejected_key(): void
+    {
+        config([
+            'services.midtrans.server_key' => 'kunci-salah-uji',
+            'services.midtrans.client_key' => 'kunci-klien-uji',
+            'services.midtrans.is_production' => false,
+        ]);
+
+        Http::fake([
+            '*/v2/*' => Http::response([
+                'status_code' => '401',
+                'status_message' => 'Unknown Merchant server_key/id',
+            ], 401),
+        ]);
+
+        $this->artisan('midtrans:check')
+            ->expectsOutputToContain('Midtrans menolak kunci server ini')
+            ->assertExitCode(1);
     }
 }

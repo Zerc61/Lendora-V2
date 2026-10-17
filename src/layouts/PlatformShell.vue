@@ -20,6 +20,7 @@ const nav = [
   { name: 'platform-users', label: 'Pengguna' },
   { name: 'platform-providers', label: 'Penyedia' },
   { name: 'platform-wallet', label: 'Dompet' },
+  { name: 'platform-finance', label: 'Keuangan' },
 ]
 
 async function onLogout() {

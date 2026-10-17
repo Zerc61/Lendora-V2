@@ -232,6 +232,12 @@ const routes = [
         component: () => import('../views/platform/PlatformWalletView.vue'),
         meta: { title: 'Transaksi dompet' },
       },
+      {
+        path: 'keuangan',
+        name: 'platform-finance',
+        component: () => import('../views/platform/PlatformFinanceView.vue'),
+        meta: { title: 'Keuangan' },
+      },
     ],
   },
 
