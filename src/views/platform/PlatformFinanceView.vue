@@ -39,8 +39,16 @@ const summaryCards = computed(() => {
   if (!summary.value) return []
 
   return [
-    { label: 'Uang sewa masuk', value: summary.value.revenue_total, sub: `${summary.value.revenue_count} pembayaran lunas` },
-    { label: 'Belum dibayar', value: summary.value.unpaid_total, sub: `${summary.value.unpaid_count} sewa disetujui` },
+    {
+      label: 'Uang sewa masuk',
+      value: summary.value.revenue_total,
+      sub: `${summary.value.revenue_count} pembayaran lunas`,
+    },
+    {
+      label: 'Belum dibayar',
+      value: summary.value.unpaid_total,
+      sub: `${summary.value.unpaid_count} sewa disetujui`,
+    },
     { label: 'Pengembalian dana', value: summary.value.refund_total, sub: 'kembali ke dompet' },
   ]
 })
@@ -163,7 +171,11 @@ onMounted(async () => {
           </li>
         </ul>
 
-        <EmptyState v-else title="Belum ada pembayaran sewa" hint="Muncul setelah penyewa bayar sewa." />
+        <EmptyState
+          v-else
+          title="Belum ada pembayaran sewa"
+          hint="Muncul setelah penyewa bayar sewa."
+        />
 
         <Pagination
           v-if="paymentsMeta && paymentsMeta.total > 0"
@@ -195,7 +207,11 @@ onMounted(async () => {
           </li>
         </ul>
 
-        <EmptyState v-else title="Semua sewa lunas" hint="Tidak ada sewa yang disetujui tanpa pembayaran." />
+        <EmptyState
+          v-else
+          title="Semua sewa lunas"
+          hint="Tidak ada sewa yang disetujui tanpa pembayaran."
+        />
 
         <Pagination
           v-if="unpaidMeta && unpaidMeta.total > 0"
@@ -235,7 +251,11 @@ onMounted(async () => {
           </li>
         </ul>
 
-        <EmptyState v-else title="Belum ada pengembalian dana" hint="Muncul saat booking dibatalkan setelah dibayar dengan saldo." />
+        <EmptyState
+          v-else
+          title="Belum ada pengembalian dana"
+          hint="Muncul saat booking dibatalkan setelah dibayar dengan saldo."
+        />
 
         <Pagination
           v-if="refundsMeta && refundsMeta.total > 0"
